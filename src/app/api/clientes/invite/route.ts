@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     email,
     options: {
       data: { full_name: nome ?? '', role: 'client' },
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/portal`,
+      redirectTo: `https://${request.headers.get('host')}/portal`,
     },
   })
 
