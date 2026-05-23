@@ -147,10 +147,24 @@ function ClientPanel({
   onSave: (c: Client) => void
   onDelete: (id: number) => void
 }) {
-  const [editing, setEditing]   = useState(false)
-  const [form, setForm]         = useState<Client>(client)
+  const [editing, setEditing]       = useState(false)
+  const [form, setForm]             = useState<Client>(client)
+  const [inviting, setInviting]     = useState(false)
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'sent' | 'error'>('idle')
 
   const initials = client.name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
+
+  async function enviarConvite() {
+    setInviting(true)
+    setInviteStatus('idle')
+    const res = await fetch('/api/clientes/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: client.email, nome: client.name }),
+    })
+    setInviting(false)
+    setInviteStatus(res.ok ? 'sent' : 'error')
+  }
 
   function f(key: keyof Client) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -283,6 +297,31 @@ function ClientPanel({
                   <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{form.notes}</p>
                 </section>
               )}
+
+              {/* Acesso ao Portal */}
+              <section className="space-y-3">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Acesso ao Portal</p>
+                <p className="text-xs text-muted-foreground">
+                  Envie um convite para <span className="text-foreground font-medium">{client.email}</span> — o cliente receberá um link para criar a senha e acessar o portal.
+                </p>
+                {inviteStatus === 'sent' ? (
+                  <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 rounded-lg px-3 py-2.5">
+                    <CheckSquare size={13} />
+                    Convite enviado com sucesso!
+                  </div>
+                ) : inviteStatus === 'error' ? (
+                  <div className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2.5">
+                    Erro ao enviar convite. Verifique o e-mail e tente novamente.
+                  </div>
+                ) : null}
+                <button
+                  onClick={enviarConvite}
+                  disabled={inviting || inviteStatus === 'sent'}
+                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-40 text-xs font-medium transition-all border border-primary/20"
+                >
+                  {inviting ? 'Enviando...' : inviteStatus === 'sent' ? 'Convite enviado' : 'Enviar convite de acesso'}
+                </button>
+              </section>
             </>
           ) : (
             /* ── Edit mode ── */
