@@ -12,26 +12,30 @@ export async function POST(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Busca usuário existente
-  const { data: listData } = await supabase.auth.admin.listUsers()
-  const existing = listData?.users?.find(u => u.email === email)
+  let userId: string | undefined
 
-  let userId = existing?.id
+  // Tenta criar o usuário
+  const { data: created, error: createError } = await supabase.auth.admin.createUser({
+    email,
+    password: senha,
+    user_metadata: { full_name: nome ?? '', role: 'client' },
+    email_confirm: true,
+  })
 
-  if (userId) {
-    // Atualiza senha do usuário existente
-    await supabase.auth.admin.updateUserById(userId, { password: senha })
-  } else {
-    // Cria novo usuário com senha temporária
-    const { data: created, error: createError } = await supabase.auth.admin.createUser({
-      email,
+  if (created?.user?.id) {
+    userId = created.user.id
+  } else if (createError?.message?.toLowerCase().includes('already')) {
+    // Usuário já existe — busca e atualiza a senha
+    const { data: listData } = await supabase.auth.admin.listUsers({ perPage: 1000 })
+    const existing = listData?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase())
+    if (!existing) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 400 })
+    userId = existing.id
+    await supabase.auth.admin.updateUserById(userId, {
       password: senha,
       user_metadata: { full_name: nome ?? '', role: 'client' },
-      email_confirm: true,
     })
-    if (createError || !created?.user?.id)
-      return NextResponse.json({ error: createError?.message ?? 'Não foi possível criar o usuário.' }, { status: 400 })
-    userId = created.user.id
+  } else {
+    return NextResponse.json({ error: createError?.message ?? 'Não foi possível criar o usuário.' }, { status: 400 })
   }
 
   await supabase.from('perfis').upsert({ id: userId, role: 'client' })
