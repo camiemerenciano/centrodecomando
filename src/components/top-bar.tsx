@@ -12,6 +12,8 @@ const titles: Record<string, { label: string; sub: string }> = {
   '/clientes':   { label: 'Clientes',              sub: 'Base de clientes e contas'     },
   '/equipe':     { label: 'Equipe',                sub: 'Membros e permissões'          },
   '/assistente': { label: 'Assistente',            sub: 'Configurações e integrações'   },
+  '/perfil':         { label: 'Perfil',         sub: 'Atualize seus dados pessoais e credenciais de acesso' },
+  '/configuracoes':  { label: 'Configurações',  sub: 'Preferências da plataforma' },
 }
 
 const subTitles: Record<string, { label: string; sub: string }> = {

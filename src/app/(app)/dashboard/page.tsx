@@ -1,6 +1,6 @@
+import Link from 'next/link'
 import {
   TrendingUp,
-  TrendingDown,
   Users,
   CheckSquare,
   MessageSquare,
@@ -10,100 +10,20 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 const stats = [
-  {
-    label: 'Clientes Ativos',
-    value: '24',
-    change: '+2',
-    trend: 'up',
-    icon: Users,
-    color: 'text-orange-400',
-    bg: 'bg-orange-400/10',
-  },
-  {
-    label: 'Tarefas em Aberto',
-    value: '47',
-    change: '-8',
-    trend: 'down',
-    icon: CheckSquare,
-    color: 'text-sky-400',
-    bg: 'bg-sky-400/10',
-  },
-  {
-    label: 'Mensagens Não Lidas',
-    value: '13',
-    change: '+5',
-    trend: 'up',
-    icon: MessageSquare,
-    color: 'text-emerald-400',
-    bg: 'bg-emerald-400/10',
-  },
-  {
-    label: 'MRR',
-    value: 'R$ 38.400',
-    change: '+12%',
-    trend: 'up',
-    icon: DollarSign,
-    color: 'text-amber-400',
-    bg: 'bg-amber-400/10',
-  },
+  { label: 'Clientes Ativos',     value: '–', icon: Users,         color: 'text-orange-400', bg: 'bg-orange-400/10' },
+  { label: 'Tarefas em Aberto',   value: '–', icon: CheckSquare,   color: 'text-sky-400',    bg: 'bg-sky-400/10'   },
+  { label: 'Mensagens Não Lidas', value: '–', icon: MessageSquare, color: 'text-emerald-400',bg: 'bg-emerald-400/10'},
+  { label: 'MRR',                 value: '–', icon: DollarSign,    color: 'text-amber-400',  bg: 'bg-amber-400/10' },
 ]
-
-const urgentTasks = [
-  { id: 1, title: 'Aprovar copy campanha Dia dos Namorados', client: 'Loja Bloom', priority: 'urgent', due: 'Hoje' },
-  { id: 2, title: 'Relatório mensal – Maio', client: 'Studio Fit', priority: 'high', due: 'Amanhã' },
-  { id: 3, title: 'Agendar stories semana', client: 'Café Aurora', priority: 'high', due: '24/05' },
-  { id: 4, title: 'Revisão de identidade visual', client: 'Tech Solve', priority: 'medium', due: '25/05' },
-]
-
-const recentMessages = [
-  { id: 1, name: 'Ana Beatriz', company: 'Loja Bloom', message: 'Aprovei os layouts! Pode agendar.', time: '5min', unread: true },
-  { id: 2, name: 'Carlos M.', company: 'Studio Fit', message: 'Preciso do relatório até 5ª feira.', time: '28min', unread: true },
-  { id: 3, name: 'Fernanda L.', company: 'Café Aurora', message: 'Ótimo trabalho no feed!', time: '1h', unread: false },
-  { id: 4, name: 'Diego R.', company: 'Tech Solve', message: 'Podemos agendar uma call?', time: '3h', unread: true },
-]
-
-const funnelSteps = [
-  { label: 'Novos leads',        value: 176 },
-  { label: 'Qualificados',       value: 111, pct: '63%' },
-  { label: 'Reuniões',           value: 75,  pct: '68%' },
-  { label: 'Contratos enviados', value: 64,  pct: '85%' },
-  { label: 'Assinados',          value: 32,  pct: '50%' },
-]
-
-const funnelEdgeL = [0,  6, 13, 21, 30]
-const funnelEdgeR = [100, 94, 87, 79, 70]
-const funnelBotL  = 37
-const funnelBotR  = 63
-
-const funnelColors = [
-  'oklch(0.72 0.20 48)',
-  'oklch(0.65 0.21 44)',
-  'oklch(0.58 0.22 40)',
-  'oklch(0.52 0.21 38)',
-  'oklch(0.46 0.20 35)',
-]
-
-const priorityClass: Record<string, string> = {
-  urgent: 'bg-red-500/15 text-red-400 border-0',
-  high:   'bg-orange-500/15 text-orange-400 border-0',
-  medium: 'bg-sky-500/15 text-sky-400 border-0',
-  low:    'bg-muted text-muted-foreground border-0',
-}
-
-const priorityLabel: Record<string, string> = {
-  urgent: 'Urgente', high: 'Alta', medium: 'Média', low: 'Baixa',
-}
 
 export default function DashboardPage() {
   return (
     <div className="space-y-6 max-w-[1400px]">
       {/* Stats grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map(({ label, value, change, trend, icon: Icon, color, bg }) => (
+        {stats.map(({ label, value, icon: Icon, color, bg }) => (
           <Card key={label} className="bg-card border-border">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
@@ -116,15 +36,8 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5 mt-3">
-                {trend === 'up' ? (
-                  <TrendingUp size={12} className="text-emerald-400" />
-                ) : (
-                  <TrendingDown size={12} className="text-red-400" />
-                )}
-                <span className={`text-xs font-medium ${trend === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {change}
-                </span>
-                <span className="text-xs text-muted-foreground">esta semana</span>
+                <TrendingUp size={12} className="text-muted-foreground/40" />
+                <span className="text-xs text-muted-foreground">sem dados ainda</span>
               </div>
             </CardContent>
           </Card>
@@ -141,79 +54,30 @@ export default function DashboardPage() {
                   <AlertCircle size={15} className="text-primary" />
                   Tarefas Urgentes
                 </CardTitle>
-                <button className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors">
+                <Link href="/tarefas" className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors">
                   Ver todas <ArrowRight size={11} />
-                </button>
+                </Link>
               </div>
             </CardHeader>
-            <CardContent className="space-y-2 pt-0">
-              {urgentTasks.map(task => (
-                <div
-                  key={task.id}
-                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors group cursor-pointer"
-                >
-                  <div className="w-4 h-4 rounded border border-border group-hover:border-primary/50 transition-colors shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-foreground truncate">{task.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{task.client}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge className={`text-[10px] px-1.5 h-4 ${priorityClass[task.priority]}`}>
-                      {priorityLabel[task.priority]}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Clock size={11} />{task.due}
-                    </span>
-                  </div>
-                </div>
-              ))}
+            <CardContent className="pt-0">
+              <div className="flex flex-col items-center justify-center py-10 gap-2">
+                <CheckSquare size={28} className="text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">Nenhuma tarefa urgente</p>
+              </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Funil de vendas */}
+        {/* Funil placeholder */}
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <div className="flex items-start justify-between">
-              <div>
-                <CardTitle className="text-sm font-semibold">Funil de vendas</CardTitle>
-                <p className="text-[10px] text-muted-foreground mt-0.5">últimos 30 dias</p>
-              </div>
-              <span className="text-xs font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-lg px-2.5 py-1 leading-tight text-center">
-                {((funnelSteps[4].value / funnelSteps[0].value) * 100).toFixed(1)}%<br />
-                <span className="font-normal text-[10px]">conversão</span>
-              </span>
-            </div>
+            <CardTitle className="text-sm font-semibold">Funil de vendas</CardTitle>
+            <p className="text-[10px] text-muted-foreground mt-0.5">últimos 30 dias</p>
           </CardHeader>
           <CardContent className="pt-1 pb-4">
-            <div className="space-y-0">
-              {funnelSteps.map((step, i) => {
-                const tl = funnelEdgeL[i]
-                const tr = funnelEdgeR[i]
-                const bl = i < funnelSteps.length - 1 ? funnelEdgeL[i + 1] : funnelBotL
-                const br = i < funnelSteps.length - 1 ? funnelEdgeR[i + 1] : funnelBotR
-                return (
-                  <div key={step.label}>
-                    {step.pct && (
-                      <div className="flex justify-center py-0.5">
-                        <span className="text-[10px] text-muted-foreground">{step.pct}</span>
-                      </div>
-                    )}
-                    <div
-                      className="relative h-12 w-full flex items-center justify-center"
-                      style={{
-                        clipPath: `polygon(${tl}% 0%, ${tr}% 0%, ${br}% 100%, ${bl}% 100%)`,
-                        background: funnelColors[i],
-                      }}
-                    >
-                      <div className="text-center pointer-events-none">
-                        <p className="text-sm font-bold text-white leading-none">{step.value}</p>
-                        <p className="text-[9px] text-white/80 mt-0.5">{step.label}</p>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
+            <div className="flex flex-col items-center justify-center py-10 gap-2">
+              <DollarSign size={28} className="text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground text-center">Conecte seu pipeline<br />para ver o funil</p>
             </div>
           </CardContent>
         </Card>
@@ -227,40 +91,18 @@ export default function DashboardPage() {
               <MessageSquare size={15} className="text-primary" />
               Mensagens Recentes
             </CardTitle>
-            <button className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors">
+            <Link href="/mensagens" className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors">
               Ver todas <ArrowRight size={11} />
-            </button>
+            </Link>
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            {recentMessages.map(msg => (
-              <div
-                key={msg.id}
-                className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                  msg.unread ? 'bg-primary/8 border border-primary/15' : 'hover:bg-muted/50'
-                }`}
-              >
-                <div className="flex items-start gap-2.5">
-                  <Avatar className="w-7 h-7 shrink-0">
-                    <AvatarFallback className="bg-primary/20 text-primary text-[10px] font-semibold">
-                      {msg.name.split(' ').map(n => n[0]).join('')}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-semibold text-foreground truncate">{msg.name}</p>
-                      {msg.unread && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
-                    </div>
-                    <p className="text-[10px] text-muted-foreground truncate">{msg.company}</p>
-                    <p className="text-xs text-foreground/80 mt-1 line-clamp-2 leading-relaxed">
-                      {msg.message}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground mt-1">{msg.time}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="flex flex-col items-center justify-center py-8 gap-2">
+            <MessageSquare size={28} className="text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">Nenhuma mensagem recente</p>
+            <Link href="/mensagens" className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1">
+              Ir para mensagens <ArrowRight size={11} />
+            </Link>
           </div>
         </CardContent>
       </Card>

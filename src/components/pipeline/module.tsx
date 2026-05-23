@@ -16,8 +16,9 @@ import {
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import {
-  Plus, X, Clock, Pencil, Trash2,
-  Layers, CheckCheck, Send, GripVertical,
+  Plus, X, Clock, Pencil, Trash2, GripVertical,
+  Inbox, Search, CalendarClock, CalendarCheck2,
+  FileText, FileCheck2, RefreshCw, XCircle, Phone, DollarSign,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -25,19 +26,20 @@ import { Button } from '@/components/ui/button'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Stage    = 'producao' | 'aprovacao' | 'postagem'
+type Stage    = 'recepcao' | 'viabilidade' | 'ag_agendamento' | 'agendado' | 'contrato_enviado' | 'contrato_assinado' | 'followup' | 'perdido'
 type Priority = 'low' | 'medium' | 'high' | 'urgent'
 
 interface PCard {
   id: string
-  title: string
+  title: string       // nome do lead / prospect
   description: string
-  client: string
+  client: string      // empresa/origem
   assignee: string
   assigneeInitials: string
   dueDate: string
   priority: Priority
   stage: Stage
+  value: string       // valor estimado do contrato
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -45,9 +47,14 @@ interface PCard {
 const STAGES: {
   id: Stage; label: string; color: string; bg: string; border: string; icon: React.ReactNode
 }[] = [
-  { id: 'producao',  label: 'Produção',  icon: <Layers size={13} />,    color: 'text-sky-400',     bg: 'bg-sky-400/8',     border: 'border-sky-400/20'    },
-  { id: 'aprovacao', label: 'Aprovação', icon: <CheckCheck size={13} />, color: 'text-amber-400',   bg: 'bg-amber-400/8',   border: 'border-amber-400/20'  },
-  { id: 'postagem',  label: 'Postagem',  icon: <Send size={13} />,       color: 'text-emerald-400', bg: 'bg-emerald-400/8', border: 'border-emerald-400/20'},
+  { id: 'recepcao',          label: 'Recepção',               icon: <Inbox size={13} />,          color: 'text-slate-400',   bg: 'bg-slate-400/8',   border: 'border-slate-400/20'   },
+  { id: 'viabilidade',       label: 'Análise de Viabilidade', icon: <Search size={13} />,         color: 'text-indigo-400',  bg: 'bg-indigo-400/8',  border: 'border-indigo-400/20'  },
+  { id: 'ag_agendamento',    label: 'Aguard. Agendamento',    icon: <CalendarClock size={13} />,  color: 'text-amber-400',   bg: 'bg-amber-400/8',   border: 'border-amber-400/20'   },
+  { id: 'agendado',          label: 'Agendamento Feito',      icon: <CalendarCheck2 size={13} />, color: 'text-sky-400',     bg: 'bg-sky-400/8',     border: 'border-sky-400/20'     },
+  { id: 'contrato_enviado',  label: 'Contrato Enviado',       icon: <FileText size={13} />,       color: 'text-orange-400',  bg: 'bg-orange-400/8',  border: 'border-orange-400/20'  },
+  { id: 'contrato_assinado', label: 'Contrato Assinado',      icon: <FileCheck2 size={13} />,     color: 'text-emerald-400', bg: 'bg-emerald-400/8', border: 'border-emerald-400/20' },
+  { id: 'followup',          label: 'Follow-up',              icon: <RefreshCw size={13} />,      color: 'text-violet-400',  bg: 'bg-violet-400/8',  border: 'border-violet-400/20'  },
+  { id: 'perdido',           label: 'Leads Perdidos',         icon: <XCircle size={13} />,        color: 'text-red-400',     bg: 'bg-red-400/8',     border: 'border-red-400/20'     },
 ]
 
 const PRIORITY_CFG: Record<Priority, { label: string; color: string; dot: string }> = {
@@ -68,18 +75,16 @@ const ASSIGNEES = [
 // ─── Mock data ────────────────────────────────────────────────────────────────
 
 const INITIAL_CARDS: PCard[] = [
-  // Produção
-  { id: 'p1', title: 'Reels pack maio – 8 vídeos',          description: 'Editar 8 reels conforme briefing aprovado.',        client: 'Café Aurora', assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-26', priority: 'high',   stage: 'producao'  },
-  { id: 'p2', title: 'Copy campanha Dia dos Namorados',      description: 'Textos para posts, stories e email marketing.',     client: 'Loja Bloom',  assignee: 'Carlos F.', assigneeInitials: 'CF', dueDate: '2026-05-24', priority: 'urgent', stage: 'producao'  },
-  { id: 'p3', title: 'Calendário editorial junho',           description: 'Plano de conteúdo completo para o mês.',            client: 'Studio Fit',  assignee: 'Camila',    assigneeInitials: 'CA', dueDate: '2026-05-28', priority: 'medium', stage: 'producao'  },
-  { id: 'p4', title: 'Identidade visual – nova paleta',      description: '3 opções de paleta para rebranding.',              client: 'Tech Solve',  assignee: 'Lucas R.',  assigneeInitials: 'LR', dueDate: '2026-05-30', priority: 'low',    stage: 'producao'  },
-  // Aprovação
-  { id: 'a1', title: 'Feed layout semanal – semana 22',      description: 'Grid dos 9 posts com tema verão.',                 client: 'Beleza Pura', assignee: 'Lucas R.',  assigneeInitials: 'LR', dueDate: '2026-05-24', priority: 'high',   stage: 'aprovacao' },
-  { id: 'a2', title: 'Stories animados – promoção relâmpago',description: 'Pack de 6 stories com animação.',                  client: 'Loja Bloom',  assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-23', priority: 'urgent', stage: 'aprovacao' },
-  { id: 'a3', title: 'Relatório de performance abril',       description: 'Métricas de alcance e engajamento em PDF.',        client: 'Studio Fit',  assignee: 'Carlos F.', assigneeInitials: 'CF', dueDate: '2026-05-25', priority: 'medium', stage: 'aprovacao' },
-  // Postagem
-  { id: 'o1', title: 'Bio e destaques atualizados',          description: 'Perfil, destaques e foto de capa revisados.',      client: 'Café Aurora', assignee: 'Lucas R.',  assigneeInitials: 'LR', dueDate: '2026-05-22', priority: 'low',    stage: 'postagem'  },
-  { id: 'o2', title: 'Campanha tráfego pago – Meta Ads',     description: 'Publicar conjunto de anúncios aprovado.',          client: 'Tech Solve',  assignee: 'Camila',    assigneeInitials: 'CA', dueDate: '2026-05-23', priority: 'high',   stage: 'postagem'  },
+  { id: 'r1', title: 'Marina Costa',      description: 'Interesse em Social Media + Tráfego Pago.',       client: 'Boutique Marina',  assignee: 'Camila',    assigneeInitials: 'CA', dueDate: '2026-05-26', priority: 'medium', stage: 'recepcao',          value: 'R$ 3.500' },
+  { id: 'r2', title: 'Roberto Lima',       description: 'Indicação da Loja Bloom. Quer gestão completa.',  client: 'Lima Construtora', assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-27', priority: 'high',   stage: 'recepcao',          value: 'R$ 5.000' },
+  { id: 'v1', title: 'Patrícia Souza',     description: 'Negócio novo, avaliar ticket e escopo.',          client: 'Bella Estética',   assignee: 'Carlos F.', assigneeInitials: 'CF', dueDate: '2026-05-25', priority: 'medium', stage: 'viabilidade',       value: 'R$ 2.200' },
+  { id: 'v2', title: 'André Fernandes',    description: 'Franqueado, possível contrato maior.',             client: 'Fran. Nutri+',     assignee: 'Lucas R.',  assigneeInitials: 'LR', dueDate: '2026-05-28', priority: 'high',   stage: 'viabilidade',       value: 'R$ 7.000' },
+  { id: 'aa1', title: 'Juliana Mota',      description: 'Proposta enviada, aguardando data.',               client: 'Studio JM',        assignee: 'Camila',    assigneeInitials: 'CA', dueDate: '2026-05-24', priority: 'urgent', stage: 'ag_agendamento',    value: 'R$ 4.000' },
+  { id: 'ag1', title: 'Felipe Ramos',      description: 'Reunião marcada para 27/05 às 14h.',               client: 'Ramos Advogados',  assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-27', priority: 'high',   stage: 'agendado',          value: 'R$ 3.800' },
+  { id: 'ce1', title: 'Carla Neves',       description: 'Contrato de 6 meses enviado por e-mail.',          client: 'Doce & Cia',       assignee: 'Carlos F.', assigneeInitials: 'CF', dueDate: '2026-05-23', priority: 'urgent', stage: 'contrato_enviado',  value: 'R$ 2.900' },
+  { id: 'ca1', title: 'Marcos Oliveira',   description: 'Contrato assinado. Onboarding agendado.',          client: 'Oliveira Tech',    assignee: 'Lucas R.',  assigneeInitials: 'LR', dueDate: '2026-05-22', priority: 'low',    stage: 'contrato_assinado', value: 'R$ 6.000' },
+  { id: 'fu1', title: 'Sandra Torres',     description: 'Não respondeu. Reenviar proposta na semana.',      client: 'Torres Moda',      assignee: 'Camila',    assigneeInitials: 'CA', dueDate: '2026-05-29', priority: 'medium', stage: 'followup',          value: 'R$ 1.800' },
+  { id: 'pe1', title: 'Gustavo Alves',     description: 'Optou por agência concorrente.',                   client: 'Alves Fit',        assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-20', priority: 'low',    stage: 'perdido',           value: 'R$ 2.500' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -165,15 +170,22 @@ function DraggableCard({
         </div>
       </div>
 
-      {/* Client */}
-      <p className="text-xs text-muted-foreground pl-5">{card.client}</p>
+      {/* Client + value */}
+      <div className="flex items-center justify-between pl-5">
+        <p className="text-xs text-muted-foreground truncate">{card.client}</p>
+        {card.value && (
+          <span className="flex items-center gap-0.5 text-[10px] font-semibold text-emerald-400 shrink-0 ml-2">
+            <DollarSign size={9} />{card.value.replace('R$ ', '')}
+          </span>
+        )}
+      </div>
 
       {/* Footer */}
       <div className="flex items-center justify-between pl-5">
         <span className={`flex items-center gap-1 text-[10px] font-medium ${overdue ? 'text-red-400' : 'text-muted-foreground'}`}>
           <Clock size={10} />
           {fmtDate(card.dueDate)}
-          {overdue && ' · atrasada'}
+          {overdue && ' · atrasado'}
         </span>
 
         <div className="flex items-center gap-1.5">
@@ -295,7 +307,8 @@ function CardFormPanel({
     assigneeInitials: ASSIGNEES[0].initials,
     dueDate: '',
     priority: 'medium',
-    stage: 'producao',
+    stage: 'recepcao',
+    value: '',
     ...card,
   })
 
@@ -322,6 +335,7 @@ function CardFormPanel({
       dueDate:          form.dueDate ?? '',
       priority:         form.priority!,
       stage:            form.stage!,
+      value:            form.value ?? '',
     })
   }
 
@@ -345,22 +359,22 @@ function CardFormPanel({
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
 
           <div>
-            <label className={lbl}>Título <span className="text-destructive">*</span></label>
+            <label className={lbl}>Nome do lead <span className="text-destructive">*</span></label>
             <input
               value={form.title ?? ''}
               onChange={field('title')}
-              placeholder="Ex: Reels pack maio – 8 vídeos"
+              placeholder="Ex: João Silva"
               className={inp + ' h-9'}
               autoFocus
             />
           </div>
 
           <div>
-            <label className={lbl}>Descrição</label>
+            <label className={lbl}>Descrição / Observações</label>
             <textarea
               value={form.description ?? ''}
               onChange={field('description')}
-              placeholder="Detalhes da entrega..."
+              placeholder="Interesse, origem, contexto..."
               rows={3}
               className="w-full resize-none rounded-lg bg-muted border border-border px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
             />
@@ -368,10 +382,8 @@ function CardFormPanel({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lbl}>Cliente</label>
-              <select value={form.client} onChange={field('client')} className={inp + ' cursor-pointer'}>
-                {CLIENTS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <label className={lbl}>Empresa / Origem</label>
+              <input value={form.client ?? ''} onChange={field('client')} placeholder="Ex: Loja XYZ" className={inp} />
             </div>
             <div>
               <label className={lbl}>Responsável</label>
@@ -397,11 +409,17 @@ function CardFormPanel({
             </div>
           </div>
 
-          <div>
-            <label className={lbl}>Etapa</label>
-            <select value={form.stage} onChange={field('stage')} className={inp + ' cursor-pointer'}>
-              {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Etapa</label>
+              <select value={form.stage} onChange={field('stage')} className={inp + ' cursor-pointer'}>
+                {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>Valor estimado</label>
+              <input value={form.value ?? ''} onChange={field('value')} placeholder="R$ 0,00" className={inp} />
+            </div>
           </div>
         </div>
 
@@ -415,7 +433,7 @@ function CardFormPanel({
             disabled={!form.title?.trim()}
             className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5"
           >
-            {isEdit ? <><Pencil size={12} /> Salvar</> : <><Plus size={12} /> Criar entrega</>}
+            {isEdit ? <><Pencil size={12} /> Salvar</> : <><Plus size={12} /> Adicionar lead</>}
           </Button>
         </div>
       </div>
@@ -485,7 +503,7 @@ export function PipelineModule() {
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
   function openAdd(stage?: Stage) {
-    setEditCard({ stage: stage ?? 'producao' })
+    setEditCard({ stage: stage ?? 'recepcao' })
     setShowForm(true)
   }
 
@@ -542,7 +560,7 @@ export function PipelineModule() {
             <span className="text-[11px] text-muted-foreground animate-pulse">Salvando…</span>
           )}
           <Button size="sm" onClick={() => openAdd()} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
-            <Plus size={13} /> Nova entrega
+            <Plus size={13} /> Novo lead
           </Button>
         </div>
       </div>
@@ -554,17 +572,20 @@ export function PipelineModule() {
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
-        <div className="grid grid-cols-3 gap-4 min-h-[60vh]">
-          {STAGES.map(stage => (
-            <DroppableColumn
-              key={stage.id}
-              stage={stage}
-              cards={filtered.filter(c => c.stage === stage.id)}
-              onAdd={openAdd}
-              onEdit={openEdit}
-              onDelete={handleDelete}
-            />
-          ))}
+        <div className="overflow-x-auto pb-4">
+          <div className="flex gap-3 min-h-[60vh]" style={{ minWidth: `${STAGES.length * 260}px` }}>
+            {STAGES.map(stage => (
+              <div key={stage.id} className="w-[248px] shrink-0">
+                <DroppableColumn
+                  stage={stage}
+                  cards={filtered.filter(c => c.stage === stage.id)}
+                  onAdd={openAdd}
+                  onEdit={openEdit}
+                  onDelete={handleDelete}
+                />
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Drag overlay — follows the cursor */}

@@ -1,0 +1,16 @@
+<svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="200" height="200" rx="44" fill="oklch(0.62 0.19 40)"/>
+  <defs>
+    <clipPath id="front">
+      <rect x="-100" y="100" width="500" height="300" transform="rotate(33, 100, 100)"/>
+    </clipPath>
+  </defs>
+  <ellipse cx="100" cy="100" rx="112" ry="30"
+           transform="rotate(-33, 100, 100)"
+           stroke="white" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="100" cy="100" r="66" fill="oklch(0.62 0.19 40)" stroke="white" stroke-width="9"/>
+  <ellipse cx="100" cy="100" rx="112" ry="30"
+           transform="rotate(-33, 100, 100)"
+           stroke="white" stroke-width="9" stroke-linecap="round"
+           clip-path="url(#front)"/>
+</svg>

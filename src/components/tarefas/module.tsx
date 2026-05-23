@@ -106,7 +106,12 @@ function TaskCard({
 
   return (
     <div
-      className="relative bg-card border border-border rounded-xl p-3.5 space-y-2.5 hover:border-primary/30 cursor-pointer transition-all hover:shadow-md hover:shadow-primary/5 group"
+      draggable
+      onDragStart={e => {
+        e.dataTransfer.setData('taskId', task.id)
+        e.dataTransfer.effectAllowed = 'move'
+      }}
+      className="relative bg-card border border-border rounded-xl p-3.5 space-y-2.5 hover:border-primary/30 cursor-grab active:cursor-grabbing transition-all hover:shadow-md hover:shadow-primary/5 group"
       onClick={() => onEdit(task)}
     >
       {/* Priority dot */}
@@ -363,6 +368,7 @@ function TaskFormPanel({
 
 export function TarefasModule() {
   const [tasks, setTasks]               = useState(INITIAL_TASKS)
+  const [dragOver, setDragOver]         = useState<OpStatus | null>(null)
   const [view, setView]                 = useState<'kanban' | 'list'>('kanban')
   const [filterStatus, setFilterStatus] = useState<OpStatus | 'all'>('all')
   const [filterClient, setFilterClient] = useState('all')
@@ -486,8 +492,22 @@ export function TarefasModule() {
           {STATUS_ORDER.map(status => {
             const col  = filtered.filter(t => t.status === status)
             const cfg  = STATUS_CFG[status]
+            const isOver = dragOver === status
             return (
-              <div key={status} className="flex flex-col gap-2">
+              <div
+                key={status}
+                className={`flex flex-col gap-2 rounded-xl p-1 -m-1 transition-colors ${isOver ? 'bg-primary/8 ring-1 ring-primary/25' : ''}`}
+                onDragOver={e => { e.preventDefault(); setDragOver(status) }}
+                onDragLeave={e => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null)
+                }}
+                onDrop={e => {
+                  e.preventDefault()
+                  const id = e.dataTransfer.getData('taskId')
+                  if (id) setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t))
+                  setDragOver(null)
+                }}
+              >
                 {/* Column header */}
                 <div className="flex items-center justify-between px-1 py-0.5">
                   <div className={`flex items-center gap-1.5 text-xs font-semibold ${cfg.color}`}>
