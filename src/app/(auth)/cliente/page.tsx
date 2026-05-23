@@ -23,7 +23,7 @@ export default function ClienteRegisterPage() {
     setError(null)
     setLoading(true)
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -32,9 +32,18 @@ export default function ClienteRegisterPage() {
     })
 
     if (error) {
-      setError('Não foi possível criar sua conta. Verifique os dados e tente novamente.')
+      if (error.message.includes('already registered')) {
+        setError('Este e-mail já está cadastrado. Tente fazer login.')
+      } else {
+        setError(`Erro: ${error.message}`)
+      }
       setLoading(false)
       return
+    }
+
+    // Garante o perfil como client mesmo se o trigger falhar
+    if (data.user) {
+      await supabase.from('perfis').upsert({ id: data.user.id, role: 'client' })
     }
 
     setSucesso(true)
