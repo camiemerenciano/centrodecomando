@@ -20,6 +20,7 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [emailSent, setEmailSent] = useState(false)
 
   function set(field: keyof typeof form) {
     return (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -36,38 +37,46 @@ export default function RegisterPage() {
       password: form.password,
       options: {
         data: { full_name: form.fullName },
+        emailRedirectTo: `${window.location.origin}/dashboard`,
       },
     })
 
-    if (signUpError || !data.user) {
-      setError(signUpError?.message ?? 'Erro ao criar conta.')
+    if (signUpError) {
+      const msg =
+        signUpError.message?.includes('already registered')
+          ? 'Este e-mail já está cadastrado. Faça login.'
+          : signUpError.message || 'Erro ao criar conta. Tente novamente.'
+      setError(msg)
       setLoading(false)
       return
     }
 
-    // Create org + add user as owner
-    const slug = form.agencyName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '')
-
-    const { data: org, error: orgError } = await supabase
-      .from('organizations')
-      .insert({ name: form.agencyName, slug })
-      .select()
-      .single()
-
-    if (orgError || !org) {
-      setError('Conta criada, mas houve um erro ao configurar a agência.')
+    // Email confirmation required — user object exists but session is null
+    if (!data.session && data.user) {
+      setEmailSent(true)
       setLoading(false)
       return
     }
 
-    await supabase.from('organization_members').insert({
-      org_id: org.id,
-      user_id: data.user.id,
-      role: 'owner',
+    if (!data.user) {
+      setError('Não foi possível criar a conta. O e-mail pode já estar em uso.')
+      setLoading(false)
+      return
+    }
+
+    // Signed in immediately — create org via server route (bypasses RLS cookie issue)
+    const res = await fetch('/api/setup-org', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgName: form.agencyName }),
     })
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setError(`Conta criada, mas erro ao configurar a agência. (${body.error ?? res.status})`)
+      setLoading(false)
+      return
+    }
 
     router.push('/dashboard')
     router.refresh()
@@ -75,6 +84,25 @@ export default function RegisterPage() {
 
   const inputClass =
     'w-full rounded-lg bg-muted border border-border px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all'
+
+  if (emailSent) {
+    return (
+      <div className="glass rounded-2xl p-8 shadow-2xl text-center space-y-4">
+        <div className="w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center mx-auto">
+          <Rocket size={26} className="text-primary" />
+        </div>
+        <h1 className="text-xl font-semibold text-foreground">Confirme seu e-mail</h1>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Enviamos um link de confirmação para <span className="text-foreground font-medium">{form.email}</span>.
+          Clique no link para ativar sua conta e acessar o Centro de Comando.
+        </p>
+        <p className="text-xs text-muted-foreground">Não recebeu? Verifique a caixa de spam.</p>
+        <Link href="/login" className="inline-block text-sm text-primary hover:text-primary/80 font-medium transition-colors">
+          Já confirmei — fazer login →
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <div className="glass rounded-2xl p-8 shadow-2xl">

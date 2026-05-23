@@ -1,8 +1,10 @@
 export type UserRole = 'owner' | 'admin' | 'member'
-export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done'
+export type TaskStatus = 'novo' | 'em_andamento' | 'aguardando_cliente' | 'revisao' | 'concluido'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 export type ClientStatus = 'active' | 'paused' | 'churned'
 export type ConversationChannel = 'internal' | 'whatsapp' | 'instagram' | 'email'
+export type ConversationStatus = 'open' | 'in_progress' | 'resolved'
+export type MessageType = 'text' | 'audio'
 export type CalendarEventType = 'event' | 'deadline' | 'meeting' | 'post'
 
 export interface Organization {
@@ -55,6 +57,7 @@ export interface Task {
   description: string | null
   assignee_id: string | null
   client_id: string | null
+  conversation_id: string | null
   status: TaskStatus
   priority: TaskPriority
   due_date: string | null
@@ -98,7 +101,10 @@ export interface Conversation {
   client_id: string | null
   channel: ConversationChannel
   title: string | null
-  status: string
+  status: ConversationStatus
+  internal_notes: string | null
+  ai_summary: string | null
+  unread_count: number
   created_at: string
   updated_at: string
   client?: Client
@@ -111,6 +117,10 @@ export interface Message {
   sender_id: string | null
   content: string
   attachments: unknown[]
+  is_internal: boolean
+  message_type: MessageType
+  audio_url: string | null
+  transcription: string | null
   read_at: string | null
   created_at: string
   sender?: Profile

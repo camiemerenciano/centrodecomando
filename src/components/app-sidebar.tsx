@@ -14,6 +14,9 @@ import {
   ChevronDown,
   Bell,
   LogOut,
+  Info,
+  Layers,
+  Plug,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -34,6 +37,12 @@ const navItems = [
   { href: '/calendario', label: 'Calendário',   icon: Calendar },
   { href: '/clientes',   label: 'Clientes',     icon: Users },
   { href: '/equipe',     label: 'Equipe',       icon: UsersRound },
+]
+
+const assistanteItems = [
+  { href: '/assistente/informacoes',      label: 'Informações',       icon: Info },
+  { href: '/assistente/areas-de-atuacao', label: 'Áreas de Atuação',  icon: Layers },
+  { href: '/assistente/conexoes',         label: 'Conexões',          icon: Plug },
 ]
 
 export function AppSidebar() {
@@ -104,6 +113,34 @@ export function AppSidebar() {
             </Link>
           )
         })}
+
+        <div className="pt-4 pb-1">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-2 pb-2 font-medium">
+            Assistente
+          </p>
+          {assistanteItems.map(({ href, label, icon: Icon }) => {
+            const active = pathname === href || pathname.startsWith(href + '/')
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`
+                  flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group
+                  ${active
+                    ? 'bg-primary/15 text-primary border border-primary/20'
+                    : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent'
+                  }
+                `}
+              >
+                <Icon
+                  size={16}
+                  className={active ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-foreground transition-colors'}
+                />
+                <span className="flex-1 truncate">{label}</span>
+              </Link>
+            )
+          })}
+        </div>
       </nav>
 
       {/* Bottom actions */}
