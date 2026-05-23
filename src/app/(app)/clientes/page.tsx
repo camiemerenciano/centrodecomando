@@ -152,36 +152,35 @@ function ClientPanel({
   const [inviting, setInviting]         = useState(false)
   const [inviteStatus, setInviteStatus] = useState<'idle' | 'done' | 'error'>('idle')
   const [inviteError, setInviteError]   = useState<string | null>(null)
-  const [inviteLink, setInviteLink]     = useState<string | null>(null)
-  const [copied, setCopied]             = useState(false)
+  const [senhaTmp, setSenhaTmp]         = useState('')
+  const [copiedEmail, setCopiedEmail]   = useState(false)
+  const [copiedSenha, setCopiedSenha]   = useState(false)
 
   const initials = client.name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
 
-  async function enviarConvite() {
+  async function criarAcesso() {
     setInviting(true)
     setInviteStatus('idle')
     setInviteError(null)
     const res = await fetch('/api/clientes/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: client.email, nome: client.name }),
+      body: JSON.stringify({ email: client.email, nome: client.name, senha: senhaTmp }),
     })
     const json = await res.json().catch(() => ({}))
     setInviting(false)
     if (res.ok) {
       setInviteStatus('done')
-      setInviteLink(json.link ?? null)
     } else {
       setInviteStatus('error')
       setInviteError(json.error ?? 'Erro desconhecido')
     }
   }
 
-  function copiarLink() {
-    if (!inviteLink) return
-    navigator.clipboard.writeText(inviteLink)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  function copiar(text: string, tipo: 'email' | 'senha') {
+    navigator.clipboard.writeText(text)
+    if (tipo === 'email') { setCopiedEmail(true); setTimeout(() => setCopiedEmail(false), 2000) }
+    else { setCopiedSenha(true); setTimeout(() => setCopiedSenha(false), 2000) }
   }
 
   function f(key: keyof Client) {
@@ -322,39 +321,55 @@ function ClientPanel({
                 <p className="text-xs text-muted-foreground">
                   Envie um convite para <span className="text-foreground font-medium">{client.email}</span> — o cliente receberá um link para criar a senha e acessar o portal.
                 </p>
-                {inviteStatus === 'done' && inviteLink ? (
+                {inviteStatus === 'done' ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 rounded-lg px-3 py-2.5">
                       <CheckSquare size={13} />
-                      Link gerado! Copie e envie para o cliente.
+                      Acesso criado! Envie as credenciais abaixo para o cliente.
                     </div>
-                    <div className="flex gap-2">
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">E-mail</p>
+                      <div className="flex gap-2">
+                        <input readOnly value={client.email} className="flex-1 min-w-0 rounded-lg bg-muted border border-border px-3 py-2 text-xs text-muted-foreground truncate focus:outline-none" />
+                        <button onClick={() => copiar(client.email, 'email')} className="shrink-0 px-3 py-2 rounded-lg bg-muted border border-border text-xs font-medium text-muted-foreground hover:text-foreground transition-all">
+                          {copiedEmail ? 'Copiado!' : 'Copiar'}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-2">Senha temporária</p>
+                      <div className="flex gap-2">
+                        <input readOnly value={senhaTmp} className="flex-1 min-w-0 rounded-lg bg-muted border border-border px-3 py-2 text-xs text-muted-foreground truncate focus:outline-none" />
+                        <button onClick={() => copiar(senhaTmp, 'senha')} className="shrink-0 px-3 py-2 rounded-lg bg-muted border border-border text-xs font-medium text-muted-foreground hover:text-foreground transition-all">
+                          {copiedSenha ? 'Copiado!' : 'Copiar'}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">Link de acesso: <span className="text-foreground">centrodecomando-two.vercel.app/login</span></p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {inviteStatus === 'error' && (
+                      <div className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2.5">
+                        {inviteError ?? 'Erro ao criar acesso.'}
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Senha temporária</label>
                       <input
-                        readOnly
-                        value={inviteLink}
-                        className="flex-1 min-w-0 rounded-lg bg-muted border border-border px-3 py-2 text-xs text-muted-foreground truncate focus:outline-none"
+                        type="text"
+                        value={senhaTmp}
+                        onChange={e => setSenhaTmp(e.target.value)}
+                        placeholder="Ex: Orbita@2026"
+                        className="w-full rounded-lg bg-muted border border-border px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                       />
-                      <button
-                        onClick={copiarLink}
-                        className="shrink-0 px-3 py-2 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 text-xs font-medium transition-all border border-primary/20"
-                      >
-                        {copied ? 'Copiado!' : 'Copiar'}
-                      </button>
                     </div>
+                    <button
+                      onClick={criarAcesso}
+                      disabled={inviting || senhaTmp.length < 6}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-40 text-xs font-medium transition-all border border-primary/20"
+                    >
+                      {inviting ? 'Criando acesso...' : 'Criar acesso'}
+                    </button>
                   </div>
-                ) : inviteStatus === 'error' ? (
-                  <div className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2.5">
-                    {inviteError ?? 'Erro ao gerar convite.'}
-                  </div>
-                ) : null}
-                {inviteStatus !== 'done' && (
-                  <button
-                    onClick={enviarConvite}
-                    disabled={inviting}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-40 text-xs font-medium transition-all border border-primary/20"
-                  >
-                    {inviting ? 'Gerando link...' : 'Gerar link de acesso'}
-                  </button>
                 )}
               </section>
             </>

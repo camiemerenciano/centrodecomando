@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 export async function POST(request: NextRequest) {
-  const { email, nome } = await request.json().catch(() => ({}))
+  const { email, nome, senha } = await request.json().catch(() => ({}))
 
   if (!email) return NextResponse.json({ error: 'E-mail obrigatório' }, { status: 400 })
+  if (!senha || senha.length < 6) return NextResponse.json({ error: 'Senha deve ter pelo menos 6 caracteres.' }, { status: 400 })
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,12 +18,16 @@ export async function POST(request: NextRequest) {
 
   let userId = existing?.id
 
-  if (!userId) {
-    // Cria novo usuário
+  if (userId) {
+    // Atualiza senha do usuário existente
+    await supabase.auth.admin.updateUserById(userId, { password: senha })
+  } else {
+    // Cria novo usuário com senha temporária
     const { data: created, error: createError } = await supabase.auth.admin.createUser({
       email,
+      password: senha,
       user_metadata: { full_name: nome ?? '', role: 'client' },
-      email_confirm: false,
+      email_confirm: true,
     })
     if (createError || !created?.user?.id)
       return NextResponse.json({ error: createError?.message ?? 'Não foi possível criar o usuário.' }, { status: 400 })
@@ -31,17 +36,5 @@ export async function POST(request: NextRequest) {
 
   await supabase.from('perfis').upsert({ id: userId, role: 'client' })
 
-  // Gera o link de convite (não envia e-mail)
-  const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-    type: 'invite',
-    email,
-    options: {
-      data: { full_name: nome ?? '', role: 'client' },
-      redirectTo: `https://${request.headers.get('host')}/acesso`,
-    },
-  })
-
-  if (linkError) return NextResponse.json({ error: linkError.message }, { status: 400 })
-
-  return NextResponse.json({ ok: true, link: linkData.properties.action_link })
+  return NextResponse.json({ ok: true })
 }
