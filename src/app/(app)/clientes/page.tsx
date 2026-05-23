@@ -150,8 +150,10 @@ function ClientPanel({
   const [editing, setEditing]       = useState(false)
   const [form, setForm]             = useState<Client>(client)
   const [inviting, setInviting]         = useState(false)
-  const [inviteStatus, setInviteStatus] = useState<'idle' | 'sent' | 'error'>('idle')
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'done' | 'error'>('idle')
   const [inviteError, setInviteError]   = useState<string | null>(null)
+  const [inviteLink, setInviteLink]     = useState<string | null>(null)
+  const [copied, setCopied]             = useState(false)
 
   const initials = client.name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
 
@@ -167,11 +169,19 @@ function ClientPanel({
     const json = await res.json().catch(() => ({}))
     setInviting(false)
     if (res.ok) {
-      setInviteStatus('sent')
+      setInviteStatus('done')
+      setInviteLink(json.link ?? null)
     } else {
       setInviteStatus('error')
       setInviteError(json.error ?? 'Erro desconhecido')
     }
+  }
+
+  function copiarLink() {
+    if (!inviteLink) return
+    navigator.clipboard.writeText(inviteLink)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   function f(key: keyof Client) {
@@ -312,23 +322,40 @@ function ClientPanel({
                 <p className="text-xs text-muted-foreground">
                   Envie um convite para <span className="text-foreground font-medium">{client.email}</span> — o cliente receberá um link para criar a senha e acessar o portal.
                 </p>
-                {inviteStatus === 'sent' ? (
-                  <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 rounded-lg px-3 py-2.5">
-                    <CheckSquare size={13} />
-                    Convite enviado com sucesso!
+                {inviteStatus === 'done' && inviteLink ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 rounded-lg px-3 py-2.5">
+                      <CheckSquare size={13} />
+                      Link gerado! Copie e envie para o cliente.
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        readOnly
+                        value={inviteLink}
+                        className="flex-1 min-w-0 rounded-lg bg-muted border border-border px-3 py-2 text-xs text-muted-foreground truncate focus:outline-none"
+                      />
+                      <button
+                        onClick={copiarLink}
+                        className="shrink-0 px-3 py-2 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 text-xs font-medium transition-all border border-primary/20"
+                      >
+                        {copied ? 'Copiado!' : 'Copiar'}
+                      </button>
+                    </div>
                   </div>
                 ) : inviteStatus === 'error' ? (
                   <div className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2.5">
-                    {inviteError ?? 'Erro ao enviar convite.'}
+                    {inviteError ?? 'Erro ao gerar convite.'}
                   </div>
                 ) : null}
-                <button
-                  onClick={enviarConvite}
-                  disabled={inviting || inviteStatus === 'sent'}
-                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-40 text-xs font-medium transition-all border border-primary/20"
-                >
-                  {inviting ? 'Enviando...' : inviteStatus === 'sent' ? 'Convite enviado' : 'Enviar convite de acesso'}
-                </button>
+                {inviteStatus !== 'done' && (
+                  <button
+                    onClick={enviarConvite}
+                    disabled={inviting}
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-40 text-xs font-medium transition-all border border-primary/20"
+                  >
+                    {inviting ? 'Gerando link...' : 'Gerar link de acesso'}
+                  </button>
+                )}
               </section>
             </>
           ) : (
