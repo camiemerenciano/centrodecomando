@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     userId = existing.id
     const { error: updateError } = await supabase.auth.admin.updateUserById(userId, {
       password: senha,
-      user_metadata: { full_name: nome ?? '', role: 'client' },
+      user_metadata: { full_name: nome ?? '', role: 'client', must_change_password: true },
     })
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 400 })
   } else {
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const { data: created, error: createError } = await supabase.auth.admin.createUser({
       email,
       password: senha,
-      user_metadata: { full_name: nome ?? '', role: 'client' },
+      user_metadata: { full_name: nome ?? '', role: 'client', must_change_password: true },
       email_confirm: true,
     })
     if (createError || !created?.user?.id)

@@ -30,6 +30,14 @@ export default function LoginPage() {
       return
     }
 
+    const mustChange = data.user.user_metadata?.must_change_password === true
+
+    if (mustChange) {
+      router.push('/mudar-senha')
+      router.refresh()
+      return
+    }
+
     const { data: perfil } = await supabase
       .from('perfis')
       .select('role')
