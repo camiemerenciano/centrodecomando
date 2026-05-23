@@ -44,7 +44,7 @@ export default function LoginPage() {
     <div className="glass rounded-2xl p-8 shadow-2xl">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-foreground">Entrar</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Acesse sua central operacional</p>
+        <p className="mt-1 text-sm text-muted-foreground">Entre com seu e-mail e senha</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
