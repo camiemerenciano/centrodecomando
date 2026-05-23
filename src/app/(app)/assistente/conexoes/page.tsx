@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { QRCodeSVG } from 'qrcode.react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -340,34 +341,54 @@ function GoogleCalendarCard() {
   const [connectedName, setConnectedName]   = useState('')
   const [calendars, setCalendars]           = useState<GcalCalendar[]>([])
   const [authError, setAuthError]           = useState('')
+  const supabase = createClient()
 
-  // Restore from localStorage on mount
-  useEffect(() => {
-    const token = localStorage.getItem('gcal_token')
-    const email = localStorage.getItem('gcal_email')
-    const name  = localStorage.getItem('gcal_name')
-    if (token && email) {
-      setConnectedEmail(email)
-      setConnectedName(name ?? '')
-      setCalendars([
-        { id: 'primary', name: email,                primary: true,  selected: true  },
-        { id: 'cal2',    name: 'Agência – Entregas', primary: false, selected: true  },
-        { id: 'cal3',    name: 'Feriados no Brasil', primary: false, selected: false },
-      ])
-      setStatus('connected')
-    }
-  }, [])
-
-  function saveToStorage(token: string, email: string, name: string) {
-    localStorage.setItem('gcal_token', token)
-    localStorage.setItem('gcal_email', email)
-    localStorage.setItem('gcal_name',  name)
+  function buildCalendars(email: string): GcalCalendar[] {
+    return [
+      { id: 'primary', name: email,                primary: true,  selected: true  },
+      { id: 'cal2',    name: 'Agência – Entregas', primary: false, selected: true  },
+      { id: 'cal3',    name: 'Feriados no Brasil', primary: false, selected: false },
+    ]
   }
 
-  function clearStorage() {
-    localStorage.removeItem('gcal_token')
-    localStorage.removeItem('gcal_email')
-    localStorage.removeItem('gcal_name')
+  // Load from Supabase on mount
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase
+        .from('integracoes')
+        .select('gcal_access_token, gcal_email, gcal_name')
+        .eq('user_id', user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data?.gcal_access_token && data?.gcal_email) {
+            setConnectedEmail(data.gcal_email)
+            setConnectedName(data.gcal_name ?? '')
+            setCalendars(buildCalendars(data.gcal_email))
+            setStatus('connected')
+          }
+        })
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function saveToSupabase(token: string, refreshToken: string, email: string, name: string) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('integracoes').upsert({
+      user_id:            user.id,
+      gcal_access_token:  token,
+      gcal_refresh_token: refreshToken,
+      gcal_email:         email,
+      gcal_name:          name,
+      gcal_connected_at:  new Date().toISOString(),
+    }, { onConflict: 'user_id' })
+  }
+
+  async function clearFromSupabase() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('integracoes').delete().eq('user_id', user.id)
   }
 
   function openOAuthPopup() {
@@ -404,18 +425,15 @@ function GoogleCalendarCard() {
         return
       }
 
-      const email = e.data.email ?? ''
-      const name  = e.data.name  ?? ''
-      const token = e.data.access_token ?? ''
+      const email        = e.data.email         ?? ''
+      const name         = e.data.name          ?? ''
+      const token        = e.data.access_token  ?? ''
+      const refreshToken = e.data.refresh_token ?? ''
 
-      saveToStorage(token, email, name)
+      saveToSupabase(token, refreshToken, email, name)
       setConnectedEmail(email)
       setConnectedName(name)
-      setCalendars([
-        { id: 'primary', name: email,                primary: true,  selected: true  },
-        { id: 'cal2',    name: 'Agência – Entregas', primary: false, selected: true  },
-        { id: 'cal3',    name: 'Feriados no Brasil', primary: false, selected: false },
-      ])
+      setCalendars(buildCalendars(email))
       setStatus('connected')
     }
 
@@ -431,7 +449,7 @@ function GoogleCalendarCard() {
   }
 
   function handleDisconnect() {
-    clearStorage()
+    clearFromSupabase()
     setStatus('disconnected')
     setConnectedEmail('')
     setConnectedName('')

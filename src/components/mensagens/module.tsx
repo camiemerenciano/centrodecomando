@@ -5,12 +5,13 @@ import {
   Search, Send, Wand2, CheckSquare2, StickyNote,
   MessageSquare, Phone, Plus, X, Loader2,
   CheckCircle2, AlertCircle, Circle, Paperclip,
-  ChevronDown, RefreshCw, Plug,
+  ChevronDown, RefreshCw, Plug, Bot, Pause, UserCheck,
 } from 'lucide-react'
 import Link from 'next/link'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -150,21 +151,53 @@ export function MensagensModule() {
   const [showTaskForm, setShowTaskForm]   = useState(false)
   const [taskTitle, setTaskTitle]         = useState('')
   const [taskDone, setTaskDone]           = useState(false)
+  const [isSuggestingReply, setIsSuggestingReply] = useState(false)
+  const [gcalToken, setGcalToken]                 = useState<string | null>(null)
+  const [lunnaActiveMap, setLunnaActiveMap]       = useState<Record<string, boolean>>({})
+  const [autoReplying, setAutoReplying]           = useState<Record<string, boolean>>({})
 
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const bottomRef        = useRef<HTMLDivElement>(null)
+  const supabase         = createClient()
+  const repliedIds       = useRef<Set<string>>(new Set())
+  const lastClientMsgRef = useRef<Record<string, string | null>>({})
+  const lunnaActiveRef   = useRef<Record<string, boolean>>({})
+  const gcalTokenRef     = useRef<string | null>(null)
+  const evoRef           = useRef<EvoConfig | null>(null)
+  const conversationsRef = useRef<ConvItem[]>([])
 
-  const activeConv     = conversations.find(c => c.id === activeId) ?? null
-  const activeMessages = activeId ? (messagesMap[activeId] ?? []) : []
-  const activeStatus   = activeId ? (statusMap[activeId] ?? 'open') : 'open'
-  const activeNotes    = activeId ? (notesMap[activeId] ?? '') : ''
-  const activeSummary  = activeId ? (summaryMap[activeId] ?? null) : null
+  const activeConv      = conversations.find(c => c.id === activeId) ?? null
+  const activeMessages  = activeId ? (messagesMap[activeId] ?? []) : []
+  const activeStatus    = activeId ? (statusMap[activeId] ?? 'open') : 'open'
+  const activeNotes     = activeId ? (notesMap[activeId] ?? '') : ''
+  const activeSummary   = activeId ? (summaryMap[activeId] ?? null) : null
+  const isLunnaActive   = activeId ? (lunnaActiveMap[activeId] ?? true) : true
+  const isLunnaTyping   = activeId ? (autoReplying[activeId] ?? false) : false
 
-  // Load Evolution credentials from localStorage
+  // Keep refs in sync
+  useEffect(() => { lunnaActiveRef.current   = lunnaActiveMap },   [lunnaActiveMap])
+  useEffect(() => { gcalTokenRef.current     = gcalToken },         [gcalToken])
+  useEffect(() => { evoRef.current           = evo },               [evo])
+  useEffect(() => { conversationsRef.current = conversations },     [conversations])
+
+  // Load Evolution credentials and Google Calendar token on mount
   useEffect(() => {
     const url  = localStorage.getItem('evo_apiUrl')
     const key  = localStorage.getItem('evo_apiKey')
     const inst = localStorage.getItem('evo_instance')
     if (url && key && inst) setEvo({ apiUrl: url, apiKey: key, instanceName: inst })
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase
+        .from('integracoes')
+        .select('gcal_access_token')
+        .eq('user_id', user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data?.gcal_access_token) setGcalToken(data.gcal_access_token)
+        })
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Fetch chats when evo is set
@@ -202,8 +235,11 @@ export function MensagensModule() {
       .then(r => r.json())
       .then(data => {
         if (!Array.isArray(data)) return
-        // API may return newest-first; reverse to show oldest→newest in chat
-        setMessagesMap(prev => ({ ...prev, [activeId]: data.map(mapMessage) }))
+        const mapped = data.map(mapMessage)
+        setMessagesMap(prev => ({ ...prev, [activeId]: mapped }))
+        // mark all existing client messages as seen so Lunna doesn't reply to history
+        const lastClient = [...mapped].reverse().find(m => !m.mine && m.type === 'text')
+        lastClientMsgRef.current[activeId] = lastClient?.id ?? null
       })
       .finally(() => setLoadingMsgs(false))
   }, [evo, activeId])
@@ -213,25 +249,91 @@ export function MensagensModule() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [activeMessages.length])
 
-  // Poll for new messages every 15s
+  // Poll for new messages every 5s — triggers Lunna auto-reply when active
   useEffect(() => {
     if (!evo || !activeId) return
-    const poll = setInterval(() => {
-      fetch('/api/evolution/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...evo, remoteJid: activeId }),
-      })
-        .then(r => r.json())
-        .then(data => {
-          if (!Array.isArray(data)) return
-          const ordered = [...data].reverse()
-          setMessagesMap(prev => ({ ...prev, [activeId]: ordered.map(mapMessage) }))
+    const poll = setInterval(async () => {
+      try {
+        const r    = await fetch('/api/evolution/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...evo, remoteJid: activeId }),
         })
-        .catch(() => null)
+        const data = await r.json()
+        if (!Array.isArray(data)) return
+        const mapped = [...data].reverse().map(mapMessage)
+
+        const lastClient = [...mapped].reverse().find(m => !m.mine && m.type === 'text')
+        const isLunna    = lunnaActiveRef.current[activeId] ?? true
+
+        if (
+          lastClient &&
+          lastClient.id !== lastClientMsgRef.current[activeId] &&
+          !repliedIds.current.has(lastClient.id) &&
+          isLunna
+        ) {
+          repliedIds.current.add(lastClient.id)
+          lastClientMsgRef.current[activeId] = lastClient.id
+          lunnaAutoReply(activeId, mapped)
+        }
+
+        setMessagesMap(prev => ({ ...prev, [activeId]: mapped }))
+      } catch { /* ignore */ }
     }, 5000)
     return () => clearInterval(poll)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evo, activeId])
+
+  // ── Lunna auto-reply ─────────────────────────────────────────────────────
+
+  async function lunnaAutoReply(convId: string, msgs: MsgItem[]) {
+    const conv       = conversationsRef.current.find(c => c.id === convId)
+    const currentEvo = evoRef.current
+    if (!conv || !currentEvo) return
+
+    setAutoReplying(prev => ({ ...prev, [convId]: true }))
+    try {
+      const res = await fetch('/api/ai/reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: msgs.filter(m => m.type !== 'note').slice(-20)
+            .map(m => ({ from: m.mine ? 'Equipe' : conv.name, content: m.content })),
+          clientName: conv.name,
+          gcalToken: gcalTokenRef.current ?? undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!data.reply) return
+
+      await fetch('/api/evolution/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...currentEvo, number: convId, text: data.reply }),
+      })
+
+      const sentMsg: MsgItem = {
+        id: `lunna-${Date.now()}`,
+        from: 'me',
+        content: data.reply,
+        time: nowTime(),
+        mine: true,
+        type: 'text',
+      }
+      setMessagesMap(prev => ({ ...prev, [convId]: [...(prev[convId] ?? []), sentMsg] }))
+      setConversations(prev => prev.map(c =>
+        c.id === convId ? { ...c, lastMessage: data.reply, time: 'agora' } : c
+      ))
+    } catch { /* ignore */ }
+    finally {
+      setAutoReplying(prev => ({ ...prev, [convId]: false }))
+    }
+  }
+
+  function toggleLunna() {
+    if (!activeId) return
+    setLunnaActiveMap(prev => ({ ...prev, [activeId]: !(prev[activeId] ?? true) }))
+  }
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
@@ -311,6 +413,31 @@ export function MensagensModule() {
       setSummaryMap(prev => ({ ...prev, [activeId!]: 'Erro ao conectar com a IA.' }))
     } finally {
       setIsSummarizing(false)
+    }
+  }
+
+  async function handleSuggestReply() {
+    if (!activeId || !activeConv || activeMessages.length === 0) return
+    setIsSuggestingReply(true)
+    try {
+      const res = await fetch('/api/ai/reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: activeMessages
+            .filter(m => m.type !== 'note')
+            .slice(-20)
+            .map(m => ({ from: m.mine ? 'Equipe' : activeConv.name, content: m.content })),
+          clientName: activeConv.name,
+          gcalToken: gcalToken ?? undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data.reply) setInput(data.reply)
+    } catch {
+      // silently ignore
+    } finally {
+      setIsSuggestingReply(false)
     }
   }
 
@@ -474,6 +601,11 @@ export function MensagensModule() {
               <Badge className="bg-emerald-500/15 text-emerald-400 border-0 text-[10px] flex items-center gap-1 shrink-0">
                 <Phone size={9} /> WhatsApp
               </Badge>
+              {isLunnaActive && (
+                <Badge className="bg-primary/15 text-primary border-0 text-[10px] flex items-center gap-1 shrink-0">
+                  <Bot size={9} /> lunna
+                </Badge>
+              )}
               <Badge className={`${statusCfg[activeStatus].color} border-0 text-[10px] flex items-center gap-1 shrink-0`}>
                 {statusCfg[activeStatus].icon}
                 {statusCfg[activeStatus].label}
@@ -532,6 +664,18 @@ export function MensagensModule() {
                   </div>
                 )
               })}
+              {isLunnaTyping && (
+                <div className="flex justify-start">
+                  <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl rounded-bl-sm bg-card border border-border">
+                    <Bot size={11} className="text-primary shrink-0" />
+                    <div className="flex gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div ref={bottomRef} />
             </div>
 
@@ -551,6 +695,16 @@ export function MensagensModule() {
                   />
                 </div>
                 <div className="flex items-center gap-1 pb-0.5">
+                  <button
+                    title="Sugerir resposta com IA"
+                    disabled={isSuggestingReply || activeMessages.length === 0}
+                    onClick={handleSuggestReply}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors disabled:opacity-40"
+                  >
+                    {isSuggestingReply
+                      ? <Loader2 size={15} className="animate-spin text-primary" />
+                      : <Wand2 size={15} />}
+                  </button>
                   <button
                     title="Anexar arquivo"
                     className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
@@ -574,6 +728,44 @@ export function MensagensModule() {
 
       {/* ── RIGHT: Notes + AI panel ── */}
       <div className="w-[252px] border-l border-border bg-card flex flex-col shrink-0 overflow-y-auto">
+
+        {/* Lunna toggle */}
+        <div className="p-3 border-b border-border">
+          <div className={`rounded-xl p-3 flex items-center gap-3 transition-colors ${
+            isLunnaActive
+              ? 'bg-primary/8 border border-primary/20'
+              : 'bg-muted/60 border border-border'
+          }`}>
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+              isLunnaActive ? 'bg-primary/15' : 'bg-muted'
+            }`}>
+              {isLunnaTyping
+                ? <Loader2 size={15} className="text-primary animate-spin" />
+                : <Bot size={15} className={isLunnaActive ? 'text-primary' : 'text-muted-foreground'} />
+              }
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className={`text-xs font-semibold leading-tight ${isLunnaActive ? 'text-foreground' : 'text-muted-foreground'}`}>
+                {isLunnaTyping ? 'lunna digitando…' : isLunnaActive ? 'lunna ativa' : 'atendimento humano'}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                {isLunnaActive ? 'respondendo automaticamente' : 'lunna pausada'}
+              </p>
+            </div>
+            <button
+              onClick={toggleLunna}
+              disabled={!activeConv}
+              title={isLunnaActive ? 'Pausar Lunna' : 'Ativar Lunna'}
+              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors disabled:opacity-40 ${
+                isLunnaActive
+                  ? 'bg-primary/15 hover:bg-primary/25 text-primary'
+                  : 'bg-muted hover:bg-muted/70 text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {isLunnaActive ? <Pause size={13} /> : <UserCheck size={13} />}
+            </button>
+          </div>
+        </div>
 
         {/* Status */}
         <div className="p-3 border-b border-border">
