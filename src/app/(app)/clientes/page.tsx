@@ -28,13 +28,13 @@ const statusConfig: Record<Status, { label: string; cls: string }> = {
 }
 
 const planColor: Record<string, string> = {
-  Premium: 'bg-violet-500/15 text-violet-400 border-0',
+  Premium: 'bg-orange-500/15 text-orange-400 border-0',
   Pro:     'bg-sky-500/15 text-sky-400 border-0',
   Starter: 'bg-muted text-muted-foreground border-0',
 }
 
 const stats = [
-  { label: 'Total Clientes',    value: '24',         icon: Users,      color: 'text-violet-400', bg: 'bg-violet-400/10' },
+  { label: 'Total Clientes',    value: '24',         icon: Users,      color: 'text-orange-400', bg: 'bg-orange-400/10' },
   { label: 'Ativos',            value: '20',         icon: TrendingUp, color: 'text-emerald-400',bg: 'bg-emerald-400/10' },
   { label: 'MRR Total',         value: 'R$ 38.400',  icon: DollarSign, color: 'text-amber-400',  bg: 'bg-amber-400/10' },
   { label: 'Ticket Médio',      value: 'R$ 1.920',   icon: BarChart3,  color: 'text-sky-400',    bg: 'bg-sky-400/10' },

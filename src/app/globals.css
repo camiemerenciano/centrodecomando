@@ -49,62 +49,62 @@
 }
 
 /* ================================================================
-   CENTRO DE COMANDO — Dark Space Purple Theme (always dark)
+   CENTRO DE COMANDO — Dark Burnt Orange Theme (always dark)
    ================================================================ */
 :root,
 .dark {
   --radius: 0.625rem;
 
-  /* Deep space backgrounds */
-  --background:         oklch(0.10 0.020 270);
-  --foreground:         oklch(0.95 0.008 270);
+  /* Deep dark backgrounds */
+  --background:         oklch(0.10 0.012 25);
+  --foreground:         oklch(0.95 0.008 25);
 
-  --card:               oklch(0.13 0.018 268);
-  --card-foreground:    oklch(0.95 0.008 270);
+  --card:               oklch(0.13 0.010 22);
+  --card-foreground:    oklch(0.95 0.008 25);
 
-  --popover:            oklch(0.14 0.022 268);
-  --popover-foreground: oklch(0.95 0.008 270);
+  --popover:            oklch(0.14 0.012 22);
+  --popover-foreground: oklch(0.95 0.008 25);
 
-  /* Primary — purple */
-  --primary:            oklch(0.60 0.22 284);
+  /* Primary — burnt orange */
+  --primary:            oklch(0.62 0.19 40);
   --primary-foreground: oklch(0.98 0.00 0);
 
   /* Secondary */
-  --secondary:          oklch(0.18 0.020 268);
-  --secondary-foreground: oklch(0.85 0.010 270);
+  --secondary:          oklch(0.18 0.012 22);
+  --secondary-foreground: oklch(0.85 0.010 25);
 
   /* Muted */
-  --muted:              oklch(0.16 0.016 268);
-  --muted-foreground:   oklch(0.55 0.012 270);
+  --muted:              oklch(0.16 0.010 22);
+  --muted-foreground:   oklch(0.55 0.010 25);
 
   /* Accent */
-  --accent:             oklch(0.20 0.030 280);
-  --accent-foreground:  oklch(0.92 0.010 270);
+  --accent:             oklch(0.20 0.022 35);
+  --accent-foreground:  oklch(0.92 0.010 25);
 
   /* Destructive */
   --destructive:        oklch(0.60 0.22 15);
 
   /* Borders / inputs */
-  --border:             oklch(0.22 0.020 270);
-  --input:              oklch(0.18 0.016 268);
-  --ring:               oklch(0.60 0.22 284);
+  --border:             oklch(0.22 0.014 25);
+  --input:              oklch(0.18 0.010 22);
+  --ring:               oklch(0.62 0.19 40);
 
   /* Charts */
-  --chart-1: oklch(0.60 0.22 284);
+  --chart-1: oklch(0.62 0.19 40);
   --chart-2: oklch(0.70 0.18 210);
   --chart-3: oklch(0.65 0.20 330);
   --chart-4: oklch(0.58 0.16 160);
   --chart-5: oklch(0.72 0.18 60);
 
   /* Sidebar */
-  --sidebar:                oklch(0.11 0.022 270);
-  --sidebar-foreground:     oklch(0.88 0.010 270);
-  --sidebar-primary:        oklch(0.60 0.22 284);
+  --sidebar:                oklch(0.11 0.014 22);
+  --sidebar-foreground:     oklch(0.88 0.010 25);
+  --sidebar-primary:        oklch(0.62 0.19 40);
   --sidebar-primary-foreground: oklch(0.98 0.00 0);
-  --sidebar-accent:         oklch(0.17 0.024 272);
-  --sidebar-accent-foreground: oklch(0.88 0.010 270);
-  --sidebar-border:         oklch(0.18 0.018 270);
-  --sidebar-ring:           oklch(0.60 0.22 284);
+  --sidebar-accent:         oklch(0.17 0.016 28);
+  --sidebar-accent-foreground: oklch(0.88 0.010 25);
+  --sidebar-border:         oklch(0.18 0.012 25);
+  --sidebar-ring:           oklch(0.62 0.19 40);
 }
 
 @layer base {
@@ -122,27 +122,27 @@
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.26 0.022 270);
+    background: oklch(0.26 0.016 25);
     border-radius: 99px;
   }
-  ::-webkit-scrollbar-thumb:hover { background: oklch(0.36 0.032 280); }
+  ::-webkit-scrollbar-thumb:hover { background: oklch(0.36 0.022 35); }
 }
 
 /* Utilities */
 .glass {
-  background: oklch(0.14 0.018 268 / 0.85);
+  background: oklch(0.14 0.010 22 / 0.85);
   backdrop-filter: blur(12px);
-  border: 1px solid oklch(0.26 0.020 270 / 0.5);
+  border: 1px solid oklch(0.26 0.014 25 / 0.5);
 }
 
-.glow-purple {
-  box-shadow: 0 0 24px oklch(0.60 0.22 284 / 0.18),
-              0 0 48px oklch(0.60 0.22 284 / 0.06);
+.glow-orange {
+  box-shadow: 0 0 24px oklch(0.62 0.19 40 / 0.18),
+              0 0 48px oklch(0.62 0.19 40 / 0.06);
 }
 
 .grid-bg {
   background-image:
-    linear-gradient(oklch(0.28 0.018 270 / 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, oklch(0.28 0.018 270 / 0.12) 1px, transparent 1px);
+    linear-gradient(oklch(0.28 0.012 25 / 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.28 0.012 25 / 0.12) 1px, transparent 1px);
   background-size: 40px 40px;
 }

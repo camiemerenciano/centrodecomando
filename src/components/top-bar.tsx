@@ -7,16 +7,23 @@ const titles: Record<string, { label: string; sub: string }> = {
   '/dashboard':  { label: 'Dashboard',            sub: 'Visão geral da operação'       },
   '/mensagens':  { label: 'Mensagens',             sub: 'Central de comunicação'        },
   '/tarefas':    { label: 'Tarefas',               sub: 'Gestão de entregas'            },
-  '/pipeline':   { label: 'Pipeline Operacional',   sub: 'Produção, Aprovação e Postagem' },
+  '/pipeline':   { label: 'Pipeline Operacional',  sub: 'Produção, Aprovação e Postagem' },
   '/calendario': { label: 'Calendário',            sub: 'Agenda de conteúdo e eventos'  },
   '/clientes':   { label: 'Clientes',              sub: 'Base de clientes e contas'     },
   '/equipe':     { label: 'Equipe',                sub: 'Membros e permissões'          },
+  '/assistente': { label: 'Assistente',            sub: 'Configurações e integrações'   },
+}
+
+const subTitles: Record<string, { label: string; sub: string }> = {
+  '/assistente/informacoes':      { label: 'Informações',      sub: 'Dados da agência'              },
+  '/assistente/areas-de-atuacao': { label: 'Áreas de Atuação', sub: 'Especialidades da agência'     },
+  '/assistente/conexoes':         { label: 'Conexões',         sub: 'Integrações e ferramentas'     },
 }
 
 export function TopBar() {
   const pathname = usePathname()
   const base = '/' + (pathname.split('/')[1] ?? '')
-  const { label, sub } = titles[base] ?? { label: 'Centro de Comando', sub: '' }
+  const { label, sub } = subTitles[pathname] ?? titles[base] ?? { label: 'Centro de Comando', sub: '' }
 
   return (
     <header className="flex items-center justify-between gap-4 px-6 py-4 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-10">

@@ -23,7 +23,7 @@ const members: Member[] = [
 
 const roleConfig: Record<Role, { label: string; cls: string; icon: React.ReactNode }> = {
   owner:  { label: 'Proprietário', cls: 'bg-amber-500/15 text-amber-400 border-0',  icon: <Crown size={10} /> },
-  admin:  { label: 'Admin',        cls: 'bg-violet-500/15 text-violet-400 border-0', icon: <Shield size={10} /> },
+  admin:  { label: 'Admin',        cls: 'bg-orange-500/15 text-orange-400 border-0', icon: <Shield size={10} /> },
   member: { label: 'Membro',       cls: 'bg-muted text-muted-foreground border-0',  icon: <User size={10} /> },
 }
 
@@ -40,8 +40,8 @@ export default function EquipePage() {
       <div className="grid grid-cols-3 gap-4">
         <Card className="bg-card border-border">
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-violet-400/10 flex items-center justify-center">
-              <Users size={18} className="text-violet-400" />
+            <div className="w-10 h-10 rounded-xl bg-orange-400/10 flex items-center justify-center">
+              <Users size={18} className="text-orange-400" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total de membros</p>

@@ -14,14 +14,14 @@ interface CalEvent {
 }
 
 const events: CalEvent[] = [
-  { id: 1, title: 'Post – Café Aurora',    client: 'Café Aurora', type: 'post',     day: 1, startH: 9,  endH: 10, color: 'bg-violet-500/20 border-violet-500/40 text-violet-300' },
+  { id: 1, title: 'Post – Café Aurora',    client: 'Café Aurora', type: 'post',     day: 1, startH: 9,  endH: 10, color: 'bg-orange-500/20 border-orange-500/40 text-orange-300' },
   { id: 2, title: 'Reel – Loja Bloom',     client: 'Loja Bloom',  type: 'reel',     day: 1, startH: 11, endH: 13, color: 'bg-sky-500/20 border-sky-500/40 text-sky-300' },
   { id: 3, title: 'Call estratégia',       client: 'Studio Fit',  type: 'meeting',  day: 2, startH: 10, endH: 11, color: 'bg-amber-500/20 border-amber-500/40 text-amber-300' },
   { id: 4, title: 'Story – promoção',      client: 'Loja Bloom',  type: 'story',    day: 2, startH: 14, endH: 15, color: 'bg-pink-500/20 border-pink-500/40 text-pink-300' },
   { id: 5, title: 'Relatório maio',        client: 'Studio Fit',  type: 'deadline', day: 3, startH: 9,  endH: 10, color: 'bg-red-500/20 border-red-500/40 text-red-300' },
   { id: 6, title: 'Feed planning junho',   client: 'Café Aurora', type: 'meeting',  day: 4, startH: 14, endH: 16, color: 'bg-amber-500/20 border-amber-500/40 text-amber-300' },
   { id: 7, title: 'Reels semana',          client: 'Beleza Pura', type: 'reel',     day: 5, startH: 11, endH: 12, color: 'bg-sky-500/20 border-sky-500/40 text-sky-300' },
-  { id: 8, title: 'Posts programados',     client: 'Tech Solve',  type: 'post',     day: 6, startH: 10, endH: 11, color: 'bg-violet-500/20 border-violet-500/40 text-violet-300' },
+  { id: 8, title: 'Posts programados',     client: 'Tech Solve',  type: 'post',     day: 6, startH: 10, endH: 11, color: 'bg-orange-500/20 border-orange-500/40 text-orange-300' },
 ]
 
 const typeIcon: Record<EventType, React.ReactNode> = {
@@ -41,7 +41,7 @@ const upcomingEvents = [
 ]
 
 const typeColor: Record<EventType, string> = {
-  post:     'bg-violet-500/15 text-violet-400 border-0',
+  post:     'bg-orange-500/15 text-orange-400 border-0',
   reel:     'bg-sky-500/15 text-sky-400 border-0',
   story:    'bg-pink-500/15 text-pink-400 border-0',
   meeting:  'bg-amber-500/15 text-amber-400 border-0',

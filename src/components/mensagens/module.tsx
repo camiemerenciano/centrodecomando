@@ -92,7 +92,7 @@ const channelIcon: Record<Channel, React.ReactNode> = {
 const channelColor: Record<Channel, string> = {
   instagram: 'bg-pink-500/15 text-pink-400',
   email:     'bg-sky-500/15 text-sky-400',
-  internal:  'bg-violet-500/15 text-violet-400',
+  internal:  'bg-orange-500/15 text-orange-400',
   whatsapp:  'bg-emerald-500/15 text-emerald-400',
 }
 
@@ -583,7 +583,7 @@ export function MensagensModule() {
         <div className="p-3 border-b border-border">
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Resumo com IA</p>
           {activeSummary && (
-            <div className="rounded-lg bg-violet-500/8 border border-violet-500/20 p-2.5 mb-2">
+            <div className="rounded-lg bg-orange-500/8 border border-orange-500/20 p-2.5 mb-2">
               <p className="text-[11px] text-foreground leading-relaxed whitespace-pre-line">{activeSummary}</p>
             </div>
           )}

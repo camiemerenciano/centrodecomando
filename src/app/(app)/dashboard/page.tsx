@@ -20,8 +20,8 @@ const stats = [
     change: '+2',
     trend: 'up',
     icon: Users,
-    color: 'text-violet-400',
-    bg: 'bg-violet-400/10',
+    color: 'text-orange-400',
+    bg: 'bg-orange-400/10',
   },
   {
     label: 'Tarefas em Aberto',
@@ -66,11 +66,25 @@ const recentMessages = [
   { id: 4, name: 'Diego R.', company: 'Tech Solve', message: 'Podemos agendar uma call?', time: '3h', unread: true },
 ]
 
-const pipeline = [
-  { stage: 'Prospecção', count: 8, value: 'R$ 42k', color: 'bg-violet-500' },
-  { stage: 'Proposta',   count: 4, value: 'R$ 28k', color: 'bg-sky-500' },
-  { stage: 'Negociação', count: 3, value: 'R$ 19k', color: 'bg-amber-500' },
-  { stage: 'Fechamento', count: 2, value: 'R$ 14k', color: 'bg-emerald-500' },
+const funnelSteps = [
+  { label: 'Novos leads',        value: 176 },
+  { label: 'Qualificados',       value: 111, pct: '63%' },
+  { label: 'Reuniões',           value: 75,  pct: '68%' },
+  { label: 'Contratos enviados', value: 64,  pct: '85%' },
+  { label: 'Assinados',          value: 32,  pct: '50%' },
+]
+
+const funnelEdgeL = [0,  6, 13, 21, 30]
+const funnelEdgeR = [100, 94, 87, 79, 70]
+const funnelBotL  = 37
+const funnelBotR  = 63
+
+const funnelColors = [
+  'oklch(0.72 0.20 48)',
+  'oklch(0.65 0.21 44)',
+  'oklch(0.58 0.22 40)',
+  'oklch(0.52 0.21 38)',
+  'oklch(0.46 0.20 35)',
 ]
 
 const priorityClass: Record<string, string> = {
@@ -157,39 +171,49 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Pipeline overview */}
+        {/* Funil de vendas */}
         <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold">Pipeline</CardTitle>
-              <button className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors">
-                Ver <ArrowRight size={11} />
-              </button>
+          <CardHeader className="pb-2">
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold">Funil de vendas</CardTitle>
+                <p className="text-[10px] text-muted-foreground mt-0.5">últimos 30 dias</p>
+              </div>
+              <span className="text-xs font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-lg px-2.5 py-1 leading-tight text-center">
+                {((funnelSteps[4].value / funnelSteps[0].value) * 100).toFixed(1)}%<br />
+                <span className="font-normal text-[10px]">conversão</span>
+              </span>
             </div>
           </CardHeader>
-          <CardContent className="space-y-3 pt-0">
-            {pipeline.map(({ stage, count, value, color }) => (
-              <div key={stage} className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">{stage}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">{count} deals</span>
-                    <span className="font-medium text-foreground">{value}</span>
+          <CardContent className="pt-1 pb-4">
+            <div className="space-y-0">
+              {funnelSteps.map((step, i) => {
+                const tl = funnelEdgeL[i]
+                const tr = funnelEdgeR[i]
+                const bl = i < funnelSteps.length - 1 ? funnelEdgeL[i + 1] : funnelBotL
+                const br = i < funnelSteps.length - 1 ? funnelEdgeR[i + 1] : funnelBotR
+                return (
+                  <div key={step.label}>
+                    {step.pct && (
+                      <div className="flex justify-center py-0.5">
+                        <span className="text-[10px] text-muted-foreground">{step.pct}</span>
+                      </div>
+                    )}
+                    <div
+                      className="relative h-12 w-full flex items-center justify-center"
+                      style={{
+                        clipPath: `polygon(${tl}% 0%, ${tr}% 0%, ${br}% 100%, ${bl}% 100%)`,
+                        background: funnelColors[i],
+                      }}
+                    >
+                      <div className="text-center pointer-events-none">
+                        <p className="text-sm font-bold text-white leading-none">{step.value}</p>
+                        <p className="text-[9px] text-white/80 mt-0.5">{step.label}</p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${color}`}
-                    style={{ width: `${(count / 8) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-            <div className="pt-2 border-t border-border">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground font-medium">Total pipeline</span>
-                <span className="font-bold text-foreground">R$ 103k</span>
-              </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>

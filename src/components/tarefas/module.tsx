@@ -40,7 +40,7 @@ const STATUS_CFG: Record<OpStatus, {
   novo:               { label: 'Novo',              color: 'text-slate-400',   bg: 'bg-slate-400/10',   border: 'border-slate-400/20',   icon: <Circle size={11} />       },
   em_andamento:       { label: 'Em andamento',       color: 'text-sky-400',     bg: 'bg-sky-400/10',     border: 'border-sky-400/20',     icon: <PlayCircle size={11} />   },
   aguardando_cliente: { label: 'Aguard. cliente',    color: 'text-amber-400',   bg: 'bg-amber-400/10',   border: 'border-amber-400/20',   icon: <Hourglass size={11} />    },
-  revisao:            { label: 'Revisão',            color: 'text-violet-400',  bg: 'bg-violet-400/10',  border: 'border-violet-400/20',  icon: <Eye size={11} />          },
+  revisao:            { label: 'Revisão',            color: 'text-orange-400',  bg: 'bg-orange-400/10',  border: 'border-orange-400/20',  icon: <Eye size={11} />          },
   concluido:          { label: 'Concluído',          color: 'text-emerald-400', bg: 'bg-emerald-400/10', border: 'border-emerald-400/20', icon: <CheckCircle2 size={11} /> },
 }
 
