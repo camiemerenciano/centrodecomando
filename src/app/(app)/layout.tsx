@@ -1,9 +1,24 @@
 export const dynamic = 'force-dynamic'
 
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
 import { AppSidebar } from '@/components/app-sidebar'
 import { TopBar } from '@/components/top-bar'
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) redirect('/login')
+
+  const { data: perfil } = await supabase
+    .from('perfis')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (perfil?.role === 'client') redirect('/portal')
+
   return (
     <div className="flex min-h-screen">
       <AppSidebar />
