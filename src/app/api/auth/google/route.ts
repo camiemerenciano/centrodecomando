@@ -6,9 +6,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'GOOGLE_CLIENT_ID não configurado' }, { status: 500 })
   }
 
-  const host = request.headers.get('host') ?? 'localhost:3000'
-  const proto = host.includes('localhost') ? 'http' : 'https'
-  const redirectUri = `${proto}://${host}/api/auth/google/callback`
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:3000/api/auth/google/callback'
 
   const params = new URLSearchParams({
     client_id:     clientId,
