@@ -149,21 +149,29 @@ function ClientPanel({
 }) {
   const [editing, setEditing]       = useState(false)
   const [form, setForm]             = useState<Client>(client)
-  const [inviting, setInviting]     = useState(false)
+  const [inviting, setInviting]         = useState(false)
   const [inviteStatus, setInviteStatus] = useState<'idle' | 'sent' | 'error'>('idle')
+  const [inviteError, setInviteError]   = useState<string | null>(null)
 
   const initials = client.name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
 
   async function enviarConvite() {
     setInviting(true)
     setInviteStatus('idle')
+    setInviteError(null)
     const res = await fetch('/api/clientes/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: client.email, nome: client.name }),
     })
+    const json = await res.json().catch(() => ({}))
     setInviting(false)
-    setInviteStatus(res.ok ? 'sent' : 'error')
+    if (res.ok) {
+      setInviteStatus('sent')
+    } else {
+      setInviteStatus('error')
+      setInviteError(json.error ?? 'Erro desconhecido')
+    }
   }
 
   function f(key: keyof Client) {
@@ -311,7 +319,7 @@ function ClientPanel({
                   </div>
                 ) : inviteStatus === 'error' ? (
                   <div className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2.5">
-                    Erro ao enviar convite. Verifique o e-mail e tente novamente.
+                    {inviteError ?? 'Erro ao enviar convite.'}
                   </div>
                 ) : null}
                 <button
