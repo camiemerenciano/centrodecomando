@@ -11,16 +11,23 @@ export async function POST(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Cria o usuário se não existir
-  const { data: created } = await supabase.auth.admin.createUser({
-    email,
-    user_metadata: { full_name: nome ?? '', role: 'client' },
-    email_confirm: false,
-  })
+  // Busca usuário existente
+  const { data: listData } = await supabase.auth.admin.listUsers()
+  const existing = listData?.users?.find(u => u.email === email)
 
-  const userId = created?.user?.id
+  let userId = existing?.id
 
-  if (!userId) return NextResponse.json({ error: 'Não foi possível criar o usuário.' }, { status: 400 })
+  if (!userId) {
+    // Cria novo usuário
+    const { data: created, error: createError } = await supabase.auth.admin.createUser({
+      email,
+      user_metadata: { full_name: nome ?? '', role: 'client' },
+      email_confirm: false,
+    })
+    if (createError || !created?.user?.id)
+      return NextResponse.json({ error: createError?.message ?? 'Não foi possível criar o usuário.' }, { status: 400 })
+    userId = created.user.id
+  }
 
   await supabase.from('perfis').upsert({ id: userId, role: 'client' })
 
