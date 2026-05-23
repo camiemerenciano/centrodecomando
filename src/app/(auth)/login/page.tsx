@@ -22,7 +22,7 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
       setError('E-mail ou senha incorretos.')
@@ -30,7 +30,13 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/dashboard')
+    const { data: perfil } = await supabase
+      .from('perfis')
+      .select('role')
+      .eq('id', data.user.id)
+      .single()
+
+    router.push(perfil?.role === 'client' ? '/portal' : '/dashboard')
     router.refresh()
   }
 

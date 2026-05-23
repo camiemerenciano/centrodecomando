@@ -17,6 +17,7 @@ import {
   Info,
   Layers,
   Plug,
+  MessagesSquare,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -54,6 +55,7 @@ const navGroups = [
       { href: '/tarefas',    label: 'Tarefas',    icon: CheckSquare },
       { href: '/calendario', label: 'Calendário', icon: Calendar },
       { href: '/equipe',     label: 'Equipe',     icon: UsersRound },
+      { href: '/chat',       label: 'Chat Interno', icon: MessagesSquare },
     ],
   },
 ]
