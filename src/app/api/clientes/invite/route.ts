@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     email,
     options: {
       data: { full_name: nome ?? '', role: 'client' },
-      redirectTo: `https://${request.headers.get('host')}/portal`,
+      redirectTo: `https://${request.headers.get('host')}/acesso`,
     },
   })
 
