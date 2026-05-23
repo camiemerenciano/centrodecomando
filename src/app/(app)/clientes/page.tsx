@@ -58,66 +58,11 @@ const planColor: Record<string, string> = {
 
 const PLANS    = ['Starter', 'Pro', 'Premium']
 const STATUSES: Status[] = ['active', 'paused', 'churned']
-const ASSIGNEES = [
-  { name: 'Maria G.',  initials: 'MG' },
-  { name: 'Carlos F.', initials: 'CF' },
-  { name: 'Lucas R.',  initials: 'LR' },
-  { name: 'Camila',    initials: 'CA' },
-]
+const ASSIGNEES: { name: string; initials: string }[] = []
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 
-const INITIAL_CLIENTS: Client[] = [
-  {
-    id: 1, name: 'Ana Beatriz', email: 'ana@lojabloom.com', phone: '(11) 99234-5678', cpf: '123.456.789-00',
-    company: 'Loja Bloom', cnpj: '12.345.678/0001-99', instagram: '@lojabloom', website: 'lojabloom.com.br',
-    address: 'Rua das Flores, 123 – São Paulo, SP', segment: 'Moda & Lifestyle',
-    status: 'active', plan: 'Premium', mrr: 'R$ 4.500', since: 'Jan/24',
-    assignee: 'Maria G.', assigneeInitials: 'MG', tasks: 5, notes: 'Cliente VIP. Reunião quinzenal toda segunda.',
-  },
-  {
-    id: 2, name: 'Carlos Mendes', email: 'carlos@studiofit.com', phone: '(11) 98765-4321', cpf: '987.654.321-00',
-    company: 'Studio Fit', cnpj: '98.765.432/0001-10', instagram: '@studiofit', website: 'studiofit.com.br',
-    address: 'Av. Paulista, 1000 – São Paulo, SP', segment: 'Fitness & Saúde',
-    status: 'active', plan: 'Pro', mrr: 'R$ 2.800', since: 'Mar/24',
-    assignee: 'Carlos F.', assigneeInitials: 'CF', tasks: 3, notes: '',
-  },
-  {
-    id: 3, name: 'Fernanda Lima', email: 'fe@cafeaurora.com', phone: '(21) 97654-3210', cpf: '456.789.123-00',
-    company: 'Café Aurora', cnpj: '45.678.912/0001-34', instagram: '@cafeaurora', website: 'cafeaurora.com.br',
-    address: 'Rua do Catete, 200 – Rio de Janeiro, RJ', segment: 'Alimentação',
-    status: 'active', plan: 'Premium', mrr: 'R$ 3.200', since: 'Fev/24',
-    assignee: 'Lucas R.', assigneeInitials: 'LR', tasks: 7, notes: 'Precisa de relatório semanal toda sexta.',
-  },
-  {
-    id: 4, name: 'Diego Rocha', email: 'diego@techsolve.com', phone: '(31) 96543-2109', cpf: '321.654.987-00',
-    company: 'Tech Solve', cnpj: '32.165.498/0001-76', instagram: '@techsolve', website: 'techsolve.com.br',
-    address: 'Av. Afonso Pena, 500 – Belo Horizonte, MG', segment: 'Tecnologia',
-    status: 'active', plan: 'Starter', mrr: 'R$ 1.400', since: 'Abr/24',
-    assignee: 'Maria G.', assigneeInitials: 'MG', tasks: 2, notes: '',
-  },
-  {
-    id: 5, name: 'Juliana Santos', email: 'ju@belezapura.com', phone: '(41) 95432-1098', cpf: '654.321.987-00',
-    company: 'Beleza Pura', cnpj: '65.432.198/0001-54', instagram: '@belezapura', website: '',
-    address: 'Rua XV de Novembro, 300 – Curitiba, PR', segment: 'Beleza & Estética',
-    status: 'paused', plan: 'Pro', mrr: 'R$ 0', since: 'Mai/24',
-    assignee: 'Carlos F.', assigneeInitials: 'CF', tasks: 0, notes: 'Pausado por férias da cliente. Retorno em julho.',
-  },
-  {
-    id: 6, name: 'Roberto Maia', email: 'rob@constrrj.com', phone: '(21) 94321-0987', cpf: '789.123.456-00',
-    company: 'Construção RJ', cnpj: '78.912.345/0001-23', instagram: '@constrrj', website: '',
-    address: 'Rua Visconde de Pirajá, 400 – Rio de Janeiro, RJ', segment: 'Construção Civil',
-    status: 'churned', plan: 'Starter', mrr: 'R$ 0', since: 'Jun/23',
-    assignee: 'Lucas R.', assigneeInitials: 'LR', tasks: 0, notes: 'Saiu por corte de budget.',
-  },
-]
-
-const stats = [
-  { label: 'Total Clientes', value: '6',          icon: Users,      color: 'text-orange-400',  bg: 'bg-orange-400/10'  },
-  { label: 'Ativos',         value: '4',          icon: TrendingUp, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
-  { label: 'MRR Total',      value: 'R$ 11.900',  icon: DollarSign, color: 'text-amber-400',   bg: 'bg-amber-400/10'   },
-  { label: 'Ticket Médio',   value: 'R$ 2.975',   icon: BarChart3,  color: 'text-sky-400',     bg: 'bg-sky-400/10'     },
-]
+const INITIAL_CLIENTS: Client[] = []
 
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
 

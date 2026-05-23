@@ -51,31 +51,10 @@ const PRIORITY_CFG: Record<Priority, { label: string; color: string; dot: string
   low:    { label: 'Baixa',   color: 'bg-muted text-muted-foreground',     dot: 'bg-muted-foreground' },
 }
 
-const CLIENTS = ['Loja Bloom', 'Studio Fit', 'Café Aurora', 'Tech Solve', 'Beleza Pura']
+const CLIENTS:   string[]                          = []
+const ASSIGNEES: { name: string; initials: string }[] = []
 
-const ASSIGNEES = [
-  { name: 'Camila',    initials: 'CA' },
-  { name: 'Maria G.',  initials: 'MG' },
-  { name: 'Carlos F.', initials: 'CF' },
-  { name: 'Lucas R.',  initials: 'LR' },
-]
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const INITIAL_TASKS: OpTask[] = [
-  { id: '1',  title: 'Criar copy para campanha Dia dos Namorados', description: 'Desenvolver textos para posts, stories e email marketing da campanha.', client: 'Loja Bloom',  assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-24', priority: 'urgent', status: 'novo',               conversationOrigin: 'Ana Beatriz' },
-  { id: '2',  title: 'Pesquisa de concorrentes – setor fitness',   description: 'Mapear top 5 concorrentes e benchmark de conteúdo orgânico e pago.',    client: 'Studio Fit', assignee: 'Carlos F.', assigneeInitials: 'CF', dueDate: '2026-05-25', priority: 'medium', status: 'novo',               conversationOrigin: null          },
-  { id: '3',  title: 'Nova paleta de cores – identidade visual',   description: 'Propor 3 opções de paleta alinhadas ao rebranding aprovado.',            client: 'Tech Solve', assignee: 'Lucas R.',  assigneeInitials: 'LR', dueDate: '2026-05-28', priority: 'low',    status: 'novo',               conversationOrigin: 'Diego R.'    },
-  { id: '4',  title: 'Edição de reels – pacote maio',              description: 'Editar 8 reels conforme briefing aprovado na reunião de kick-off.',      client: 'Café Aurora', assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-26', priority: 'high',   status: 'em_andamento',       conversationOrigin: 'Fernanda L.' },
-  { id: '5',  title: 'Calendário editorial – junho',               description: 'Montar calendário completo de conteúdo com datas e temas definidos.',    client: 'Loja Bloom',  assignee: 'Carlos F.', assigneeInitials: 'CF', dueDate: '2026-05-26', priority: 'medium', status: 'em_andamento',       conversationOrigin: null          },
-  { id: '6',  title: 'Configuração de tráfego pago – Meta Ads',    description: 'Criar campanhas de conversão e leads no Gerenciador de Anúncios.',      client: 'Studio Fit', assignee: 'Camila',    assigneeInitials: 'CA', dueDate: '2026-05-27', priority: 'high',   status: 'em_andamento',       conversationOrigin: 'Carlos M.'   },
-  { id: '7',  title: 'Relatório de performance abril',             description: 'Consolidar métricas de alcance, engajamento e conversão em PDF.',       client: 'Studio Fit', assignee: 'Carlos F.', assigneeInitials: 'CF', dueDate: '2026-05-24', priority: 'high',   status: 'aguardando_cliente', conversationOrigin: 'Carlos M.'   },
-  { id: '8',  title: 'Aprovação da identidade visual',             description: 'Cliente deve aprovar o guia de marca atualizado.',                      client: 'Tech Solve', assignee: 'Lucas R.',  assigneeInitials: 'LR', dueDate: '2026-05-25', priority: 'urgent', status: 'aguardando_cliente', conversationOrigin: 'Diego R.'    },
-  { id: '9',  title: 'Feed layout semanal – semana 22',            description: 'Layout para os 9 posts da semana com grid aprovado.',                   client: 'Beleza Pura', assignee: 'Lucas R.',  assigneeInitials: 'LR', dueDate: '2026-05-24', priority: 'high',   status: 'revisao',            conversationOrigin: null          },
-  { id: '10', title: 'Stories animados – promoção relâmpago',      description: 'Pack de 6 stories com animação para promoção do fim de semana.',        client: 'Loja Bloom',  assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-23', priority: 'medium', status: 'revisao',            conversationOrigin: 'Ana Beatriz' },
-  { id: '11', title: 'Artes para stories – promoção maio',         description: 'Pack de stories finalizado e publicado conforme aprovação.',            client: 'Loja Bloom',  assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-22', priority: 'medium', status: 'concluido',          conversationOrigin: 'Ana Beatriz' },
-  { id: '12', title: 'Bio e destaques atualizados',                description: 'Bio, destaques e foto de perfil atualizados.',                         client: 'Café Aurora', assignee: 'Lucas R.',  assigneeInitials: 'LR', dueDate: '2026-05-20', priority: 'low',    status: 'concluido',          conversationOrigin: null          },
-]
+const INITIAL_TASKS: OpTask[] = []
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

@@ -16,13 +16,7 @@ interface Member {
   initials: string
 }
 
-const members: Member[] = [
-  { id: 1, name: 'Maria Gomes',     email: 'maria@nexus.com',     role: 'owner',  specialty: 'Estratégia & Growth',  clients: 8,  tasks: 12, joined: 'Jan/24', status: 'online',  initials: 'MG' },
-  { id: 2, name: 'Carlos Ferreira', email: 'carlos@nexus.com',    role: 'admin',  specialty: 'Social Media Manager', clients: 6,  tasks: 18, joined: 'Fev/24', status: 'online',  initials: 'CF' },
-  { id: 3, name: 'Larissa Reis',    email: 'larissa@nexus.com',   role: 'member', specialty: 'Design & Criação',     clients: 5,  tasks: 14, joined: 'Mar/24', status: 'away',    initials: 'LR' },
-  { id: 4, name: 'Pedro Alves',     email: 'pedro@nexus.com',     role: 'member', specialty: 'Tráfego Pago',        clients: 4,  tasks: 9,  joined: 'Abr/24', status: 'offline', initials: 'PA' },
-  { id: 5, name: 'Bianca Torres',   email: 'bianca@nexus.com',    role: 'member', specialty: 'Copywriter',          clients: 3,  tasks: 11, joined: 'Mai/24', status: 'online',  initials: 'BT' },
-]
+const members: Member[] = []
 
 const roleConfig: Record<Role, { label: string; cls: string; icon: React.ReactNode }> = {
   owner:  { label: 'Proprietário', cls: 'bg-amber-500/15 text-amber-400 border-0',  icon: <Crown size={10} /> },

@@ -64,28 +64,12 @@ const PRIORITY_CFG: Record<Priority, { label: string; color: string; dot: string
   low:    { label: 'Baixa',   color: 'bg-muted text-muted-foreground',   dot: 'bg-muted-foreground' },
 }
 
-const CLIENTS   = ['Loja Bloom', 'Studio Fit', 'Café Aurora', 'Tech Solve', 'Beleza Pura']
-const ASSIGNEES = [
-  { name: 'Camila',    initials: 'CA' },
-  { name: 'Maria G.',  initials: 'MG' },
-  { name: 'Carlos F.', initials: 'CF' },
-  { name: 'Lucas R.',  initials: 'LR' },
-]
+const CLIENTS:   string[]                          = []
+const ASSIGNEES: { name: string; initials: string }[] = []
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
+// ─── Initial data ─────────────────────────────────────────────────────────────
 
-const INITIAL_CARDS: PCard[] = [
-  { id: 'r1', title: 'Marina Costa',      description: 'Interesse em Social Media + Tráfego Pago.',       client: 'Boutique Marina',  assignee: 'Camila',    assigneeInitials: 'CA', dueDate: '2026-05-26', priority: 'medium', stage: 'recepcao',          value: 'R$ 3.500' },
-  { id: 'r2', title: 'Roberto Lima',       description: 'Indicação da Loja Bloom. Quer gestão completa.',  client: 'Lima Construtora', assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-27', priority: 'high',   stage: 'recepcao',          value: 'R$ 5.000' },
-  { id: 'v1', title: 'Patrícia Souza',     description: 'Negócio novo, avaliar ticket e escopo.',          client: 'Bella Estética',   assignee: 'Carlos F.', assigneeInitials: 'CF', dueDate: '2026-05-25', priority: 'medium', stage: 'viabilidade',       value: 'R$ 2.200' },
-  { id: 'v2', title: 'André Fernandes',    description: 'Franqueado, possível contrato maior.',             client: 'Fran. Nutri+',     assignee: 'Lucas R.',  assigneeInitials: 'LR', dueDate: '2026-05-28', priority: 'high',   stage: 'viabilidade',       value: 'R$ 7.000' },
-  { id: 'aa1', title: 'Juliana Mota',      description: 'Proposta enviada, aguardando data.',               client: 'Studio JM',        assignee: 'Camila',    assigneeInitials: 'CA', dueDate: '2026-05-24', priority: 'urgent', stage: 'ag_agendamento',    value: 'R$ 4.000' },
-  { id: 'ag1', title: 'Felipe Ramos',      description: 'Reunião marcada para 27/05 às 14h.',               client: 'Ramos Advogados',  assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-27', priority: 'high',   stage: 'agendado',          value: 'R$ 3.800' },
-  { id: 'ce1', title: 'Carla Neves',       description: 'Contrato de 6 meses enviado por e-mail.',          client: 'Doce & Cia',       assignee: 'Carlos F.', assigneeInitials: 'CF', dueDate: '2026-05-23', priority: 'urgent', stage: 'contrato_enviado',  value: 'R$ 2.900' },
-  { id: 'ca1', title: 'Marcos Oliveira',   description: 'Contrato assinado. Onboarding agendado.',          client: 'Oliveira Tech',    assignee: 'Lucas R.',  assigneeInitials: 'LR', dueDate: '2026-05-22', priority: 'low',    stage: 'contrato_assinado', value: 'R$ 6.000' },
-  { id: 'fu1', title: 'Sandra Torres',     description: 'Não respondeu. Reenviar proposta na semana.',      client: 'Torres Moda',      assignee: 'Camila',    assigneeInitials: 'CA', dueDate: '2026-05-29', priority: 'medium', stage: 'followup',          value: 'R$ 1.800' },
-  { id: 'pe1', title: 'Gustavo Alves',     description: 'Optou por agência concorrente.',                   client: 'Alves Fit',        assignee: 'Maria G.',  assigneeInitials: 'MG', dueDate: '2026-05-20', priority: 'low',    stage: 'perdido',           value: 'R$ 2.500' },
-]
+const INITIAL_CARDS: PCard[] = []
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
