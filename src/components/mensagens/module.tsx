@@ -392,10 +392,34 @@ export function MensagensModule() {
     }
   }
 
-  function toggleLunna() {
+  async function toggleLunna() {
     if (!activeId) return
-    setLunnaActiveMap(prev => ({ ...prev, [activeId]: !(prev[activeId] ?? true) }))
+    const nowPaused = lunnaActiveMap[activeId] ?? true // currently active → will pause
+    const newActive = !nowPaused
+    setLunnaActiveMap(prev => ({ ...prev, [activeId]: newActive }))
+    // Persist to Supabase so webhook also respects the pause
+    await fetch('/api/lunna/pausa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remoteJid: activeId, paused: !newActive }),
+    })
   }
+
+  // Load Lunna pause states when conversations load
+  useEffect(() => {
+    if (conversations.length === 0) return
+    async function loadPausas() {
+      const loaded: Record<string, boolean> = {}
+      await Promise.all(conversations.map(async c => {
+        const res = await fetch(`/api/lunna/pausa?remoteJid=${encodeURIComponent(c.id)}`)
+        const d = await res.json()
+        loaded[c.id] = !d.paused // lunnaActive = NOT paused
+      }))
+      setLunnaActiveMap(loaded)
+    }
+    loadPausas()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations.length])
 
   // ── Actions ──────────────────────────────────────────────────────────────
 

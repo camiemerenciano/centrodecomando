@@ -18,6 +18,7 @@ import {
   Layers,
   Plug,
   MessagesSquare,
+  Building2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -62,7 +63,7 @@ const navGroups = [
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { user, signOut } = useAuth()
+  const { user, role, signOut } = useAuth()
 
   const initials = (user?.user_metadata?.full_name as string | undefined)
     ?.split(' ')
@@ -132,6 +133,34 @@ export function AppSidebar() {
           </div>
         ))}
       </nav>
+
+      {/* Superadmin */}
+      {role === 'superadmin' && (
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-2 pb-1.5 font-medium">
+            Admin
+          </p>
+          <div className="space-y-0.5">
+            {[{ href: '/agencias', label: 'Agências', icon: Building2 }].map(({ href, label, icon: Icon }) => {
+              const active = pathname === href || pathname.startsWith(href + '/')
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group ${
+                    active
+                      ? 'bg-primary/15 text-primary border border-primary/20'
+                      : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent'
+                  }`}
+                >
+                  <Icon size={16} className={active ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-foreground transition-colors'} />
+                  <span className="flex-1 truncate">{label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Bottom actions */}
       <div className="px-3 pb-3 space-y-0.5 border-t border-sidebar-border pt-3">

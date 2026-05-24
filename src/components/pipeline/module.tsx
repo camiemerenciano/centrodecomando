@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import {
   DndContext,
   DragEndEvent,
@@ -64,12 +65,21 @@ const PRIORITY_CFG: Record<Priority, { label: string; color: string; dot: string
   low:    { label: 'Baixa',   color: 'bg-muted text-muted-foreground',   dot: 'bg-muted-foreground' },
 }
 
-const CLIENTS:   string[]                          = []
-const ASSIGNEES: { name: string; initials: string }[] = []
-
-// ─── Initial data ─────────────────────────────────────────────────────────────
-
-const INITIAL_CARDS: PCard[] = []
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fromRow(r: any): PCard {
+  return {
+    id:               r.id,
+    title:            r.title ?? '',
+    description:      r.description ?? '',
+    client:           r.client ?? '',
+    assignee:         r.assignee ?? '',
+    assigneeInitials: r.assignee_initials ?? '',
+    dueDate:          r.due_date ?? '',
+    priority:         (r.priority ?? 'medium') as Priority,
+    stage:            (r.stage ?? 'recepcao') as Stage,
+    value:            r.value ?? '',
+  }
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -286,9 +296,9 @@ function CardFormPanel({
   const [form, setForm] = useState<Partial<PCard>>({
     title: '',
     description: '',
-    client: CLIENTS[0],
-    assignee: ASSIGNEES[0].name,
-    assigneeInitials: ASSIGNEES[0].initials,
+    client: '',
+    assignee: '',
+    assigneeInitials: '',
     dueDate: '',
     priority: 'medium',
     stage: 'recepcao',
@@ -299,8 +309,8 @@ function CardFormPanel({
   function field<K extends keyof PCard>(key: K) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       if (key === 'assignee') {
-        const a = ASSIGNEES.find(x => x.name === e.target.value)
-        setForm(p => ({ ...p, assignee: e.target.value, assigneeInitials: a?.initials ?? '' }))
+        const initials = e.target.value.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
+        setForm(p => ({ ...p, assignee: e.target.value, assigneeInitials: initials }))
       } else {
         setForm(p => ({ ...p, [key]: e.target.value }))
       }
@@ -371,9 +381,7 @@ function CardFormPanel({
             </div>
             <div>
               <label className={lbl}>Responsável</label>
-              <select value={form.assignee} onChange={field('assignee')} className={inp + ' cursor-pointer'}>
-                {ASSIGNEES.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
-              </select>
+              <input value={form.assignee ?? ''} onChange={field('assignee')} placeholder="Nome do responsável" className={inp} />
             </div>
           </div>
 
@@ -428,13 +436,30 @@ function CardFormPanel({
 // ─── Main module ──────────────────────────────────────────────────────────────
 
 export function PipelineModule() {
-  const [cards, setCards]               = useState(INITIAL_CARDS)
+  const [cards, setCards]               = useState<PCard[]>([])
   const [activeCard, setActiveCard]     = useState<PCard | null>(null)
   const [showForm, setShowForm]         = useState(false)
   const [editCard, setEditCard]         = useState<Partial<PCard> | null>(null)
-  const [filterClient, setFilterClient] = useState('all')
   const [filterPriority, setFilterPriority] = useState('all')
   const [saving, setSaving]             = useState<string | null>(null)
+  const [userId, setUserId]             = useState<string | null>(null)
+  const supabase = createClient()
+
+  useEffect(() => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      setUserId(user.id)
+      const { data } = await supabase
+        .from('pipeline_leads')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+      if (data) setCards(data.map(fromRow))
+    }
+    load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -442,10 +467,9 @@ export function PipelineModule() {
   )
 
   const filtered = useMemo(() => cards.filter(c => {
-    if (filterClient   !== 'all' && c.client   !== filterClient)   return false
     if (filterPriority !== 'all' && c.priority !== filterPriority) return false
     return true
-  }), [cards, filterClient, filterPriority])
+  }), [cards, filterPriority])
 
   // ── Drag handlers ──────────────────────────────────────────────────────────
 
@@ -470,18 +494,10 @@ export function PipelineModule() {
     const currentStage = cards.find(c => c.id === cardId)?.stage
     if (currentStage === targetStage) return
 
-    // Optimistic update
     setCards(prev => prev.map(c => c.id === cardId ? { ...c, stage: targetStage } : c))
-
-    // Persist to Supabase
     setSaving(cardId)
-    fetch(`/api/pipeline/${cardId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stage: targetStage }),
-    })
-      .catch(console.error)
-      .finally(() => setSaving(null))
+    supabase.from('pipeline_leads').update({ stage: targetStage }).eq('id', cardId)
+      .then(() => setSaving(null))
   }
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -496,15 +512,35 @@ export function PipelineModule() {
     setShowForm(true)
   }
 
-  function handleSave(card: PCard) {
-    setCards(prev => prev.some(c => c.id === card.id)
-      ? prev.map(c => c.id === card.id ? card : c)
-      : [...prev, card]
-    )
+  async function handleSave(card: PCard) {
+    if (!userId) return
+    const row = {
+      user_id:          userId,
+      title:            card.title,
+      description:      card.description,
+      client:           card.client,
+      assignee:         card.assignee,
+      assignee_initials: card.assigneeInitials,
+      due_date:         card.dueDate,
+      priority:         card.priority,
+      stage:            card.stage,
+      value:            card.value,
+    }
+    const isNew = !cards.some(c => c.id === card.id)
+    if (isNew) {
+      const { data } = await supabase.from('pipeline_leads').insert(row).select().single()
+      if (data) {
+        setCards(prev => [...prev, fromRow(data)])
+      }
+    } else {
+      await supabase.from('pipeline_leads').update(row).eq('id', card.id)
+      setCards(prev => prev.map(c => c.id === card.id ? card : c))
+    }
     setShowForm(false)
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
+    await supabase.from('pipeline_leads').delete().eq('id', id)
     setCards(prev => prev.filter(c => c.id !== id))
   }
 
@@ -516,11 +552,6 @@ export function PipelineModule() {
       {/* ── Toolbar ── */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <select value={filterClient} onChange={e => setFilterClient(e.target.value)} className={sel}>
-            <option value="all">Todos os clientes</option>
-            {CLIENTS.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-
           <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} className={sel}>
             <option value="all">Todas as prioridades</option>
             <option value="urgent">Urgente</option>
@@ -529,9 +560,9 @@ export function PipelineModule() {
             <option value="low">Baixa</option>
           </select>
 
-          {(filterClient !== 'all' || filterPriority !== 'all') && (
+          {filterPriority !== 'all' && (
             <button
-              onClick={() => { setFilterClient('all'); setFilterPriority('all') }}
+              onClick={() => setFilterPriority('all')}
               className="flex items-center gap-1 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted border border-border transition-all"
             >
               <X size={11} /> Limpar

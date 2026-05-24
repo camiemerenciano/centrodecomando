@@ -77,6 +77,15 @@ export async function POST(request: NextRequest) {
 
     const { user_id, evo_api_url, evo_api_key } = integration
 
+    // Check if Lunna is paused for this specific conversation
+    const { data: pausa } = await admin
+      .from('lunna_pausas')
+      .select('remote_jid')
+      .eq('user_id', user_id)
+      .eq('remote_jid', remoteJid)
+      .maybeSingle()
+    if (pausa) return NextResponse.json({ ok: true })
+
     // Fetch message history for context
     const base    = (evo_api_url as string).replace(/\/$/, '')
     const headers = { 'Content-Type': 'application/json', apikey: evo_api_key as string }
