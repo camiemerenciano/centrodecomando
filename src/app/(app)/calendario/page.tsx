@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -194,19 +195,44 @@ export default function CalendarioPage() {
     d.getDate()     === today.getDate()
   )
 
-  // Restore Google token from localStorage
+  // Load Google token from Supabase on mount — auto-refresh if needed
   useEffect(() => {
-    const token = localStorage.getItem('gcal_token')
-    const email = localStorage.getItem('gcal_email')
-    if (token && token.length > 10) {
-      setGcalToken(token)
-      setGcalEmail(email ?? '')
-    } else if (token !== null) {
-      // Token was saved but is empty/invalid — clear it
-      localStorage.removeItem('gcal_token')
-      localStorage.removeItem('gcal_email')
-      localStorage.removeItem('gcal_name')
-    }
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data } = await supabase
+        .from('integracoes')
+        .select('gcal_access_token, gcal_refresh_token, gcal_email')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (!data?.gcal_email) return
+
+      let token = data.gcal_access_token as string | null
+
+      if (data.gcal_refresh_token) {
+        try {
+          const res = await fetch('/api/auth/google/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: data.gcal_refresh_token }),
+          })
+          const refreshed = await res.json()
+          if (refreshed.access_token) {
+            token = refreshed.access_token as string
+            await supabase.from('integracoes').upsert(
+              { user_id: user.id, gcal_access_token: token },
+              { onConflict: 'user_id' }
+            )
+          }
+        } catch { /* use stored token */ }
+      }
+
+      if (token) {
+        setGcalToken(token)
+        setGcalEmail(data.gcal_email as string)
+      }
+    })
   }, [])
 
   const fetchGoogleEvents = useCallback(async (token: string, days: Date[]) => {
@@ -232,7 +258,6 @@ export default function CalendarioPage() {
           `HTTP ${res.status}`
 
         if (res.status === 401) {
-          localStorage.removeItem('gcal_token')
           setGcalToken(null)
           setGcalError('Token expirado. Reconecte em Assistente → Conexões.')
         } else if (res.status === 403) {
