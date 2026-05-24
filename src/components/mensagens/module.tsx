@@ -258,12 +258,12 @@ export function MensagensModule() {
       if (data?.gcal_access_token) setGcalToken(data.gcal_access_token)
 
       // Load allowed JIDs: only conversations that came through the webhook
-      const { data: leads } = await supabase
-        .from('pipeline_leads')
-        .select('remote_jid')
-        .eq('user_id', user.id)
-        .not('remote_jid', 'is', null)
-      setAllowedJids(new Set((leads ?? []).map(l => l.remote_jid).filter(Boolean)))
+      const leadsRes = await fetch('/api/pipeline/leads')
+      const leadsData = leadsRes.ok ? await leadsRes.json() : []
+      const jids = Array.isArray(leadsData)
+        ? (leadsData as { remote_jid?: string }[]).map(l => l.remote_jid).filter(Boolean) as string[]
+        : []
+      setAllowedJids(new Set(jids))
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -443,17 +443,13 @@ export function MensagensModule() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations.length])
 
-  // Load pipeline stages + conversation status for all conversations
+  // Load pipeline stages + conversation status for all conversations via admin API
   useEffect(() => {
-    if (!userId || conversations.length === 0) return
-    const jids = conversations.map(c => c.id).filter(Boolean)
-    supabase
-      .from('pipeline_leads')
-      .select('remote_jid, stage, conv_status')
-      .eq('user_id', userId)
-      .in('remote_jid', jids)
-      .then(({ data }) => {
-        if (!data) return
+    if (conversations.length === 0) return
+    fetch('/api/pipeline/leads')
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { remote_jid: string; stage: string; conv_status?: string }[]) => {
+        if (!Array.isArray(data)) return
         const stageMap: Record<string, string> = {}
         const convStatusMap: Record<string, ConvStatus> = {}
         for (const row of data) {
@@ -466,45 +462,31 @@ export function MensagensModule() {
         setStatusMap(prev => ({ ...prev, ...convStatusMap }))
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversations.length, userId])
+  }, [conversations.length])
 
   // Reload stage + status from DB whenever active conversation changes
-  // (catches AI-driven updates that happened while the tab was open)
   useEffect(() => {
-    if (!activeId || !userId) return
-    supabase
-      .from('pipeline_leads')
-      .select('stage, conv_status')
-      .eq('user_id', userId)
-      .eq('remote_jid', activeId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data) return
-        if (data.stage)       setPipelineStageMap(prev => ({ ...prev, [activeId]: data.stage }))
-        if (data.conv_status) setStatusMap(prev => ({ ...prev, [activeId]: data.conv_status as ConvStatus }))
+    if (!activeId) return
+    fetch('/api/pipeline/leads')
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { remote_jid: string; stage: string; conv_status?: string }[]) => {
+        if (!Array.isArray(data)) return
+        const row = data.find(d => d.remote_jid === activeId)
+        if (!row) return
+        if (row.stage)       setPipelineStageMap(prev => ({ ...prev, [activeId]: row.stage }))
+        if (row.conv_status) setStatusMap(prev => ({ ...prev, [activeId]: row.conv_status as ConvStatus }))
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, userId])
+  }, [activeId])
 
   async function changePipelineStage(stage: PipelineStage) {
-    if (!activeId || !userId) return
+    if (!activeId) return
     setPipelineStageMap(prev => ({ ...prev, [activeId]: stage }))
-    const { data: existing } = await supabase
-      .from('pipeline_leads')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('remote_jid', activeId)
-      .maybeSingle()
-    if (existing) {
-      await supabase.from('pipeline_leads').update({ stage }).eq('id', existing.id)
-    } else {
-      const phone = activeId.split('@')[0] ?? activeId
-      const name  = activeConv?.name ?? `+${phone}`
-      await supabase.from('pipeline_leads').insert({
-        user_id: userId, title: name, client: name,
-        stage, priority: 'medium', remote_jid: activeId,
-      })
-    }
+    await fetch('/api/pipeline/leads', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remote_jid: activeId, stage }),
+    })
   }
 
   // Fetch client data for active conversation by phone match
@@ -586,24 +568,13 @@ export function MensagensModule() {
   }
 
   async function changeStatus(status: ConvStatus) {
-    if (!activeId || !userId) return
+    if (!activeId) return
     setStatusMap(prev => ({ ...prev, [activeId]: status }))
-    const { data: existing } = await supabase
-      .from('pipeline_leads')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('remote_jid', activeId)
-      .maybeSingle()
-    if (existing) {
-      await supabase.from('pipeline_leads').update({ conv_status: status }).eq('id', existing.id)
-    } else {
-      const phone = activeId.split('@')[0] ?? activeId
-      const name  = activeConv?.name ?? `+${phone}`
-      await supabase.from('pipeline_leads').insert({
-        user_id: userId, title: name, client: name,
-        stage: 'recepcao', priority: 'medium', remote_jid: activeId, conv_status: status,
-      })
-    }
+    await fetch('/api/pipeline/leads', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remote_jid: activeId, conv_status: status }),
+    })
   }
 
   async function handleSummarize() {
