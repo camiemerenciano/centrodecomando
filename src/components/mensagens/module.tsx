@@ -188,7 +188,7 @@ export function MensagensModule() {
   const [autoReplying, setAutoReplying]           = useState<Record<string, boolean>>({})
   const [pipelineStageMap, setPipelineStageMap]   = useState<Record<string, string>>({})
   const [clientMap, setClientMap]                 = useState<Record<string, Record<string, unknown> | null>>({})
-  const [allowedJids, setAllowedJids]             = useState<Set<string> | null>(null)
+
 
   const bottomRef        = useRef<HTMLDivElement>(null)
   const supabase         = createClient()
@@ -257,13 +257,6 @@ export function MensagensModule() {
       }
       if (data?.gcal_access_token) setGcalToken(data.gcal_access_token)
 
-      // Load allowed JIDs: only conversations that came through the webhook
-      const leadsRes = await fetch('/api/pipeline/leads')
-      const leadsData = leadsRes.ok ? await leadsRes.json() : []
-      const jids = Array.isArray(leadsData)
-        ? (leadsData as { remote_jid?: string }[]).map(l => l.remote_jid).filter(Boolean) as string[]
-        : []
-      setAllowedJids(new Set(jids))
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

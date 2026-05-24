@@ -68,7 +68,7 @@ const PRIORITY_CFG: Record<Priority, { label: string; color: string; dot: string
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fromRow(r: any): PCard {
   return {
-    id:               r.id,
+    id:               r.id ?? r.remote_jid ?? '',
     title:            r.title ?? '',
     description:      r.description ?? '',
     client:           r.client ?? '',
@@ -436,6 +436,7 @@ function CardFormPanel({
 // ─── Main module ──────────────────────────────────────────────────────────────
 
 export function PipelineModule() {
+  console.log('[pipeline] RENDERIZOU')
   const [cards, setCards]               = useState<PCard[]>([])
   const [activeCard, setActiveCard]     = useState<PCard | null>(null)
   const [showForm, setShowForm]         = useState(false)
@@ -447,22 +448,71 @@ export function PipelineModule() {
 
   useEffect(() => {
     async function fetchCards() {
-      const res = await fetch('/api/pipeline/leads')
-      if (!res.ok) return
-      const data = await res.json()
-      if (Array.isArray(data)) setCards(data.map(fromRow))
+      // 1. Get user ID
+      const { data: { user }, error: authErr } = await supabase.auth.getUser()
+      console.log('[pipeline] step1 user:', user?.id, authErr)
+      if (!user) return
 
-      // set userId from first card or from auth
-      if (data?.length) {
-        setUserId(data[0].user_id)
-      } else {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) setUserId(user.id)
+      setUserId(user.id)
+
+      // 2. Get Evolution config from server
+      const cfgRes = await fetch('/api/evolution/config')
+      const cfgData = await cfgRes.json()
+      console.log('[pipeline] step2 config:', cfgRes.status, cfgData)
+      if (!cfgRes.ok) return
+      const { apiUrl, apiKey, instanceName } = cfgData
+      if (!apiUrl || !apiKey || !instanceName) return
+
+      // 3. Get pipeline metadata from DB (via admin API)
+      const leadsRes = await fetch('/api/pipeline/leads')
+      const leadsData = leadsRes.ok ? await leadsRes.json() : []
+      console.log('[pipeline] step3 leads:', leadsData?.length)
+      const metaByJid = new Map<string, Record<string, unknown>>(
+        Array.isArray(leadsData) ? leadsData.map((l: Record<string, unknown>) => [l.remote_jid as string, l]) : []
+      )
+
+      // 4. Fetch all chats from Evolution API
+      const evoRes = await fetch('/api/evolution/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiUrl, apiKey, instanceName }),
+      })
+      console.log('[pipeline] step4 evo status:', evoRes.status)
+      if (!evoRes.ok) {
+        if (Array.isArray(leadsData)) setCards(leadsData.map(fromRow))
+        return
       }
+      const chats = await evoRes.json()
+      console.log('[pipeline] step4 chats count:', Array.isArray(chats) ? chats.length : chats)
+      if (!Array.isArray(chats)) return
+
+      // 5. Merge chats with pipeline metadata
+      const contacts = chats
+        .map((c: Record<string, unknown>) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const jid: string = (c?.remoteJid ?? (c?.id as any)?.remote ?? c?.id ?? '') as string
+          if (!jid || jid.includes('@g.us')) return null
+          const phone = jid.split('@')[0]
+          const name = (c?.name ?? c?.pushName ?? `+${phone}`) as string
+          const meta = metaByJid.get(jid)
+          return {
+            id:          meta ? (meta.id as string) : jid,
+            remote_jid:  jid,
+            title:       name,
+            client:      name,
+            stage:       (meta?.stage ?? 'recepcao') as string,
+            conv_status: (meta?.conv_status ?? 'open') as string,
+            priority:    (meta?.priority ?? 'medium') as string,
+          }
+        })
+        .filter(Boolean) as Record<string, unknown>[]
+
+      console.log('[pipeline] step5 contacts after merge:', contacts.length)
+      setCards(contacts.map(fromRow))
     }
 
     fetchCards()
-    const interval = setInterval(fetchCards, 10_000)
+    const interval = setInterval(fetchCards, 30_000)
     return () => clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
