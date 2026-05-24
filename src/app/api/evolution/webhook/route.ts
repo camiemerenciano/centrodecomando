@@ -191,7 +191,35 @@ export async function POST(request: NextRequest) {
     // Generate reply
     if (!process.env.OPENAI_API_KEY) return
 
-    const calendarTools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+    const PIPELINE_STAGE_DESCRIPTIONS = `
+- recepcao: primeiro contato, cliente ainda não qualificado
+- viabilidade: entendendo necessidades, analisando se há fit
+- ag_agendamento: cliente interessado, combinando horário para call
+- agendado: call/reunião agendada
+- contrato_enviado: proposta ou contrato enviado ao cliente
+- contrato_assinado: cliente fechou, contrato assinado
+- followup: cliente em acompanhamento pós-venda ou retomada
+- perdido: cliente desistiu ou não tem fit`
+
+    const allTools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+      {
+        type: 'function',
+        function: {
+          name: 'classificar_pipeline',
+          description: `Atualiza a etapa do pipeline com base no andamento da conversa. Use SEMPRE que a conversa avançar de etapa. Etapas disponíveis:${PIPELINE_STAGE_DESCRIPTIONS}`,
+          parameters: {
+            type: 'object',
+            properties: {
+              etapa: {
+                type: 'string',
+                enum: ['recepcao','viabilidade','ag_agendamento','agendado','contrato_enviado','contrato_assinado','followup','perdido'],
+                description: 'Nova etapa do pipeline',
+              },
+            },
+            required: ['etapa'],
+          },
+        },
+      },
       {
         type: 'function',
         function: {
@@ -228,7 +256,15 @@ export async function POST(request: NextRequest) {
       },
     ]
 
-    async function runCalendarTool(name: string, args: Record<string, string>): Promise<string> {
+    async function runTool(name: string, args: Record<string, string>): Promise<string> {
+      if (name === 'classificar_pipeline') {
+        const etapa = args.etapa
+        await admin.from('pipeline_leads')
+          .update({ stage: etapa })
+          .eq('user_id', user_id)
+          .eq('remote_jid', remoteJid)
+        return `pipeline atualizado para: ${etapa}`
+      }
       if (!gcalToken) return 'google agenda não conectado'
       if (name === 'consultar_disponibilidade') {
         const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
@@ -275,7 +311,8 @@ export async function POST(request: NextRequest) {
       temperature: 0.3,
       max_tokens: 300,
       messages: chatMessages,
-      ...(gcalToken ? { tools: calendarTools, tool_choice: 'auto' } : {}),
+      tools: allTools,
+      tool_choice: 'auto',
     })
 
     while (response.choices[0]?.finish_reason === 'tool_calls') {
@@ -285,7 +322,7 @@ export async function POST(request: NextRequest) {
       for (const tc of toolCalls) {
         if (tc.type !== 'function') continue
         const args   = JSON.parse(tc.function.arguments) as Record<string, string>
-        const result = await runCalendarTool(tc.function.name, args)
+        const result = await runTool(tc.function.name, args)
         chatMessages.push({ role: 'tool', tool_call_id: tc.id, content: result })
       }
       response = await openai.chat.completions.create({
@@ -293,7 +330,7 @@ export async function POST(request: NextRequest) {
         temperature: 0.3,
         max_tokens: 300,
         messages: chatMessages,
-        tools: calendarTools,
+        tools: allTools,
         tool_choice: 'auto',
       })
     }
