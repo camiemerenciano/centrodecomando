@@ -483,7 +483,7 @@ export function PipelineModule() {
         .map((c: Record<string, unknown>) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const jid: string = (c?.remoteJid ?? (c?.id as any)?.remote ?? c?.id ?? '') as string
-          if (!jid || !jid.endsWith('@s.whatsapp.net')) return null
+          if (!jid || !jid.endsWith('@s.whatsapp.net') || !c.lastMessage) return null
           const phone = jid.split('@')[0]
           const name = (c?.name ?? c?.pushName ?? `+${phone}`) as string
           const meta = metaByJid.get(jid)

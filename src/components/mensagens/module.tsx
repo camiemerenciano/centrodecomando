@@ -272,7 +272,11 @@ export function MensagensModule() {
       })
       const data = await res.json()
       if (!res.ok || !Array.isArray(data)) return
-      const mapped = data.map(mapChat).filter(c => c.id && c.id.endsWith('@s.whatsapp.net'))
+      const mapped = data
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((c: any) => c.lastMessage && (c.remoteJid ?? c?.id?.remote ?? c?.id ?? '').endsWith('@s.whatsapp.net'))
+        .map(mapChat)
+        .filter((c: ConvItem) => c.id)
       setConversations(mapped)
       if (mapped.length > 0 && !activeId) {
         // Restore last active conversation from localStorage, fall back to first
