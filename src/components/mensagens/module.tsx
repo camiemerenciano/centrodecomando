@@ -188,7 +188,7 @@ export function MensagensModule() {
   const [autoReplying, setAutoReplying]           = useState<Record<string, boolean>>({})
   const [pipelineStageMap, setPipelineStageMap]   = useState<Record<string, string>>({})
   const [clientMap, setClientMap]                 = useState<Record<string, Record<string, unknown> | null>>({})
-  const [allowedJids, setAllowedJids]             = useState<Set<string> | null>(null) // null = not loaded yet
+  const [allowedJids, setAllowedJids]             = useState<Set<string> | null>(null)
 
   const bottomRef        = useRef<HTMLDivElement>(null)
   const supabase         = createClient()
@@ -640,7 +640,6 @@ export function MensagensModule() {
   }
 
   const filtered = conversations.filter(c => {
-    if (allowedJids !== null && allowedJids.size > 0 && !allowedJids.has(c.id)) return false
     const q = search.toLowerCase()
     return (
       c.name.toLowerCase().includes(q) &&
