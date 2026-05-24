@@ -15,7 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .from('perfis')
     .select('role')
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
 
   if (perfil?.role === 'client') redirect('/portal')
 

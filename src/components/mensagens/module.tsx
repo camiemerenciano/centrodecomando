@@ -427,19 +427,17 @@ export function MensagensModule() {
     })
   }
 
-  // Load Lunna pause states when conversations load
+  // Load Lunna pause states — single batch request, not one per conversation
   useEffect(() => {
     if (conversations.length === 0) return
-    async function loadPausas() {
-      const loaded: Record<string, boolean> = {}
-      await Promise.all(conversations.map(async c => {
-        const res = await fetch(`/api/lunna/pausa?remoteJid=${encodeURIComponent(c.id)}`)
-        const d = await res.json()
-        loaded[c.id] = !d.paused // lunnaActive = NOT paused
-      }))
-      setLunnaActiveMap(loaded)
-    }
-    loadPausas()
+    fetch('/api/lunna/pausa')
+      .then(r => r.ok ? r.json() : { pausedJids: [] })
+      .then(({ pausedJids }: { pausedJids: string[] }) => {
+        const paused = new Set(pausedJids)
+        const loaded: Record<string, boolean> = {}
+        conversations.forEach(c => { loaded[c.id] = !paused.has(c.id) })
+        setLunnaActiveMap(loaded)
+      })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations.length])
 
