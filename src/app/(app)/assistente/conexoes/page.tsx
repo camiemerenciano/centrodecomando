@@ -28,18 +28,6 @@ const QR_TTL = 45 // seconds before QR expires
 
 type WaStatus = 'disconnected' | 'loading_qr' | 'awaiting_scan' | 'connected'
 
-function saveEvoToStorage(url: string, key: string, inst: string) {
-  localStorage.setItem('evo_apiUrl',   url)
-  localStorage.setItem('evo_apiKey',   key)
-  localStorage.setItem('evo_instance', inst)
-}
-
-function clearEvoFromStorage() {
-  localStorage.removeItem('evo_apiUrl')
-  localStorage.removeItem('evo_apiKey')
-  localStorage.removeItem('evo_instance')
-}
-
 function WhatsAppCard() {
   const [status, setStatus]     = useState<WaStatus>('disconnected')
   const [apiUrl, setApiUrl]     = useState('')
@@ -51,16 +39,65 @@ function WhatsAppCard() {
   const [qrError, setQrError]   = useState('')
   const [ttl, setTtl]           = useState(QR_TTL)
   const [expired, setExpired]   = useState(false)
+  const supabase = createClient()
 
-  // Restore from localStorage on mount
+  async function getUserId() {
+    const { data: { user } } = await supabase.auth.getUser()
+    return user?.id ?? null
+  }
+
+  async function saveEvoToSupabase(url: string, key: string, inst: string) {
+    const userId = await getUserId()
+    if (!userId) return
+    await supabase.from('integracoes').upsert({
+      user_id:          userId,
+      evo_api_url:      url,
+      evo_api_key:      key,
+      evo_instance:     inst,
+      evo_connected_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' })
+    // keep localStorage in sync for the messages module
+    localStorage.setItem('evo_apiUrl',   url)
+    localStorage.setItem('evo_apiKey',   key)
+    localStorage.setItem('evo_instance', inst)
+  }
+
+  async function clearEvoFromSupabase() {
+    const userId = await getUserId()
+    if (!userId) return
+    await supabase.from('integracoes').upsert({
+      user_id:          userId,
+      evo_api_url:      null,
+      evo_api_key:      null,
+      evo_instance:     null,
+      evo_connected_at: null,
+    }, { onConflict: 'user_id' })
+    localStorage.removeItem('evo_apiUrl')
+    localStorage.removeItem('evo_apiKey')
+    localStorage.removeItem('evo_instance')
+  }
+
+  // Restore from Supabase on mount
   useEffect(() => {
-    const url  = localStorage.getItem('evo_apiUrl')
-    const key  = localStorage.getItem('evo_apiKey')
-    const inst = localStorage.getItem('evo_instance')
-    if (url && key && inst) {
-      setApiUrl(url); setApiKey(key); setInstance(inst)
-      setStatus('connected')
-    }
+    getUserId().then(async userId => {
+      if (!userId) return
+      const { data } = await supabase
+        .from('integracoes')
+        .select('evo_api_url, evo_api_key, evo_instance')
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (data?.evo_api_url && data?.evo_api_key && data?.evo_instance) {
+        setApiUrl(data.evo_api_url)
+        setApiKey(data.evo_api_key)
+        setInstance(data.evo_instance)
+        setStatus('connected')
+        // keep localStorage in sync for messages module
+        localStorage.setItem('evo_apiUrl',   data.evo_api_url)
+        localStorage.setItem('evo_apiKey',   data.evo_api_key)
+        localStorage.setItem('evo_instance', data.evo_instance)
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Countdown while QR is visible
@@ -89,12 +126,13 @@ function WhatsAppCard() {
         })
         const data = await res.json()
         if (data?.state === 'open') {
-          saveEvoToStorage(apiUrl, apiKey, instance)
+          await saveEvoToSupabase(apiUrl, apiKey, instance)
           setStatus('connected')
         }
       } catch { /* ignore */ }
     }, 3000)
     return () => clearInterval(poll)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, apiUrl, apiKey, instance])
 
   async function fetchQr() {
@@ -128,8 +166,8 @@ function WhatsAppCard() {
     await fetchQr()
   }
 
-  function handleDisconnect() {
-    clearEvoFromStorage()
+  async function handleDisconnect() {
+    await clearEvoFromSupabase()
     setStatus('disconnected')
     setQrBase64('')
     setQrCode('')
@@ -351,23 +389,46 @@ function GoogleCalendarCard() {
     ]
   }
 
-  // Load from Supabase on mount
+  // Load from Supabase on mount — auto-refresh token if expired
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
-      supabase
+      const { data } = await supabase
         .from('integracoes')
-        .select('gcal_access_token, gcal_email, gcal_name')
+        .select('gcal_access_token, gcal_refresh_token, gcal_email, gcal_name')
         .eq('user_id', user.id)
         .maybeSingle()
-        .then(({ data }) => {
-          if (data?.gcal_access_token && data?.gcal_email) {
-            setConnectedEmail(data.gcal_email)
-            setConnectedName(data.gcal_name ?? '')
-            setCalendars(buildCalendars(data.gcal_email))
-            setStatus('connected')
+
+      if (!data?.gcal_email) return
+
+      let accessToken = data.gcal_access_token
+
+      // Try to refresh the access token if we have a refresh token
+      if (data.gcal_refresh_token) {
+        try {
+          const res = await fetch('/api/auth/google/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: data.gcal_refresh_token }),
+          })
+          const refreshed = await res.json()
+          if (refreshed.access_token) {
+            accessToken = refreshed.access_token
+            // Persist the fresh token
+            await supabase.from('integracoes').upsert({
+              user_id:           user.id,
+              gcal_access_token: refreshed.access_token,
+            }, { onConflict: 'user_id' })
           }
-        })
+        } catch { /* use stored token as fallback */ }
+      }
+
+      if (accessToken && data.gcal_email) {
+        setConnectedEmail(data.gcal_email)
+        setConnectedName(data.gcal_name ?? '')
+        setCalendars(buildCalendars(data.gcal_email))
+        setStatus('connected')
+      }
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

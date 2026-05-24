@@ -18,7 +18,7 @@ const titles: Record<string, { label: string; sub: string }> = {
 }
 
 const subTitles: Record<string, { label: string; sub: string }> = {
-  '/assistente/informacoes':      { label: 'Informações',      sub: 'Dados da agência'              },
+  '/assistente/informacoes':      { label: 'Informações',      sub: 'Configuração da IA'            },
   '/assistente/areas-de-atuacao': { label: 'Áreas de Atuação', sub: 'Especialidades da agência'     },
   '/assistente/conexoes':         { label: 'Conexões',         sub: 'Integrações e ferramentas'     },
 }

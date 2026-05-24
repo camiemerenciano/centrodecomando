@@ -32,6 +32,7 @@ interface MsgItem {
   from: string
   content: string
   time: string
+  ts: number   // unix seconds — used for chronological sort
   mine: boolean
   type: MsgType
 }
@@ -87,6 +88,16 @@ function mapChat(c: any): ConvItem {
   }
 }
 
+function rawTs(m: Record<string, unknown>): number {
+  const raw = (m?.messageTimestamp ?? m?.updatedAt) as unknown
+  if (!raw) return 0
+  if (typeof raw === 'number') return raw
+  if (typeof raw === 'string') return parseInt(raw, 10) || 0
+  const o = raw as Record<string, number>
+  if (typeof o?.low === 'number') return o.low + (o.high ?? 0) * 2 ** 32
+  return 0
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapMessage(m: any): MsgItem {
   return {
@@ -94,6 +105,7 @@ function mapMessage(m: any): MsgItem {
     from: m?.key?.fromMe ? 'me' : (m?.pushName ?? 'Cliente'),
     content: extractText(m),
     time: formatTs(m?.messageTimestamp ?? m?.updatedAt),
+    ts: rawTs(m),
     mine: m?.key?.fromMe ?? false,
     type: 'text',
   }
@@ -153,17 +165,19 @@ export function MensagensModule() {
   const [taskDone, setTaskDone]           = useState(false)
   const [isSuggestingReply, setIsSuggestingReply] = useState(false)
   const [gcalToken, setGcalToken]                 = useState<string | null>(null)
+  const [userId, setUserId]                       = useState<string | null>(null)
   const [lunnaActiveMap, setLunnaActiveMap]       = useState<Record<string, boolean>>({})
   const [autoReplying, setAutoReplying]           = useState<Record<string, boolean>>({})
 
   const bottomRef        = useRef<HTMLDivElement>(null)
   const supabase         = createClient()
-  const repliedIds       = useRef<Set<string>>(new Set())
-  const lastClientMsgRef = useRef<Record<string, string | null>>({})
+  const seenMsgIds       = useRef<Record<string, Set<string>>>({})
+  const loadedConvs      = useRef<Set<string>>(new Set())
   const lunnaActiveRef   = useRef<Record<string, boolean>>({})
   const gcalTokenRef     = useRef<string | null>(null)
   const evoRef           = useRef<EvoConfig | null>(null)
   const conversationsRef = useRef<ConvItem[]>([])
+  const messagesMapRef   = useRef<Record<string, MsgItem[]>>({})
 
   const activeConv      = conversations.find(c => c.id === activeId) ?? null
   const activeMessages  = activeId ? (messagesMap[activeId] ?? []) : []
@@ -178,24 +192,47 @@ export function MensagensModule() {
   useEffect(() => { gcalTokenRef.current     = gcalToken },         [gcalToken])
   useEffect(() => { evoRef.current           = evo },               [evo])
   useEffect(() => { conversationsRef.current = conversations },     [conversations])
+  useEffect(() => { messagesMapRef.current   = messagesMap },       [messagesMap])
 
-  // Load Evolution credentials and Google Calendar token on mount
+  // Load all credentials from Supabase on mount
   useEffect(() => {
-    const url  = localStorage.getItem('evo_apiUrl')
-    const key  = localStorage.getItem('evo_apiKey')
-    const inst = localStorage.getItem('evo_instance')
-    if (url && key && inst) setEvo({ apiUrl: url, apiKey: key, instanceName: inst })
-
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
-      supabase
+      setUserId(user.id)
+      const { data } = await supabase
         .from('integracoes')
-        .select('gcal_access_token')
+        .select('evo_api_url, evo_api_key, evo_instance, gcal_access_token, gcal_refresh_token')
         .eq('user_id', user.id)
         .maybeSingle()
-        .then(({ data }) => {
-          if (data?.gcal_access_token) setGcalToken(data.gcal_access_token)
-        })
+
+      // WhatsApp
+      if (data?.evo_api_url && data?.evo_api_key && data?.evo_instance) {
+        setEvo({ apiUrl: data.evo_api_url, apiKey: data.evo_api_key, instanceName: data.evo_instance })
+        localStorage.setItem('evo_apiUrl',   data.evo_api_url)
+        localStorage.setItem('evo_apiKey',   data.evo_api_key)
+        localStorage.setItem('evo_instance', data.evo_instance)
+      }
+
+      // Google Calendar — refresh token if available
+      if (data?.gcal_refresh_token) {
+        try {
+          const res = await fetch('/api/auth/google/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: data.gcal_refresh_token }),
+          })
+          const refreshed = await res.json()
+          if (refreshed.access_token) {
+            setGcalToken(refreshed.access_token)
+            await supabase.from('integracoes').upsert({
+              user_id:           user.id,
+              gcal_access_token: refreshed.access_token,
+            }, { onConflict: 'user_id' })
+            return
+          }
+        } catch { /* fallback to stored token */ }
+      }
+      if (data?.gcal_access_token) setGcalToken(data.gcal_access_token)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -237,9 +274,9 @@ export function MensagensModule() {
         if (!Array.isArray(data)) return
         const mapped = data.map(mapMessage)
         setMessagesMap(prev => ({ ...prev, [activeId]: mapped }))
-        // mark all existing client messages as seen so Lunna doesn't reply to history
-        const lastClient = [...mapped].reverse().find(m => !m.mine && m.type === 'text')
-        lastClientMsgRef.current[activeId] = lastClient?.id ?? null
+        // mark ALL existing messages as seen — Lunna only replies to new ones
+        seenMsgIds.current[activeId] = new Set(mapped.map(m => m.id))
+        loadedConvs.current.add(activeId)
       })
       .finally(() => setLoadingMsgs(false))
   }, [evo, activeId])
@@ -261,23 +298,42 @@ export function MensagensModule() {
         })
         const data = await r.json()
         if (!Array.isArray(data)) return
-        const mapped = [...data].reverse().map(mapMessage)
+        const mapped = data.map(mapMessage)
 
-        const lastClient = [...mapped].reverse().find(m => !m.mine && m.type === 'text')
-        const isLunna    = lunnaActiveRef.current[activeId] ?? true
+        // Wait until initial load is done to avoid replying to history
+        if (!loadedConvs.current.has(activeId)) {
+          seenMsgIds.current[activeId] = new Set(mapped.map(m => m.id))
+          loadedConvs.current.add(activeId)
+          setMessagesMap(prev => ({ ...prev, [activeId]: mapped }))
+          return
+        }
 
-        if (
-          lastClient &&
-          lastClient.id !== lastClientMsgRef.current[activeId] &&
-          !repliedIds.current.has(lastClient.id) &&
-          isLunna
-        ) {
-          repliedIds.current.add(lastClient.id)
-          lastClientMsgRef.current[activeId] = lastClient.id
+        const seen = seenMsgIds.current[activeId] ?? new Set<string>()
+
+        // Find client messages that arrived after initial load
+        const newClientMsgs = mapped.filter(m => !m.mine && m.type === 'text' && !seen.has(m.id))
+
+        // Mark all as seen
+        mapped.forEach(m => seen.add(m.id))
+        seenMsgIds.current[activeId] = seen
+
+        const isLunna = lunnaActiveRef.current[activeId] ?? true
+        if (newClientMsgs.length > 0 && isLunna) {
           lunnaAutoReply(activeId, mapped)
         }
 
-        setMessagesMap(prev => ({ ...prev, [activeId]: mapped }))
+        setMessagesMap(prev => {
+          const current = prev[activeId] ?? []
+          // Preserve locally-sent messages (Lunna + operator) not yet confirmed by API
+          const unconfirmed = current.filter(m =>
+            (m.id.startsWith('lunna-') || m.id.startsWith('temp-')) &&
+            !mapped.some(a => a.mine && a.content === m.content)
+          )
+          const merged = [...mapped, ...unconfirmed]
+          // Sort chronologically so unconfirmed messages appear in the right place
+          merged.sort((a, b) => a.ts - b.ts)
+          return { ...prev, [activeId]: merged }
+        })
       } catch { /* ignore */ }
     }, 5000)
     return () => clearInterval(poll)
@@ -286,10 +342,15 @@ export function MensagensModule() {
 
   // ── Lunna auto-reply ─────────────────────────────────────────────────────
 
-  async function lunnaAutoReply(convId: string, msgs: MsgItem[]) {
+  async function lunnaAutoReply(convId: string, _freshMsgs: MsgItem[]) {
     const conv       = conversationsRef.current.find(c => c.id === convId)
     const currentEvo = evoRef.current
     if (!conv || !currentEvo) return
+
+    // Use local state — it already has Lunna's previous replies preserved
+    const allMsgs = (messagesMapRef.current[convId] ?? [])
+      .filter(m => m.type !== 'note')
+      .slice(-30)
 
     setAutoReplying(prev => ({ ...prev, [convId]: true }))
     try {
@@ -297,10 +358,10 @@ export function MensagensModule() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: msgs.filter(m => m.type !== 'note').slice(-20)
-            .map(m => ({ from: m.mine ? 'Equipe' : conv.name, content: m.content })),
+          messages: allMsgs.map(m => ({ from: m.mine ? 'Lunna' : conv.name, content: m.content })),
           clientName: conv.name,
           gcalToken: gcalTokenRef.current ?? undefined,
+          userId: userId ?? undefined,
         }),
       })
       const data = await res.json()
@@ -317,6 +378,7 @@ export function MensagensModule() {
         from: 'me',
         content: data.reply,
         time: nowTime(),
+        ts: Math.floor(Date.now() / 1000),
         mine: true,
         type: 'text',
       }
@@ -351,6 +413,7 @@ export function MensagensModule() {
       from: 'me',
       content: text,
       time: nowTime(),
+      ts: Math.floor(Date.now() / 1000),
       mine: true,
       type: 'text',
     }
@@ -376,6 +439,7 @@ export function MensagensModule() {
       from: 'me',
       content: activeNotes.trim(),
       time: nowTime(),
+      ts: Math.floor(Date.now() / 1000),
       mine: true,
       type: 'note',
     }
@@ -430,6 +494,7 @@ export function MensagensModule() {
             .map(m => ({ from: m.mine ? 'Equipe' : activeConv.name, content: m.content })),
           clientName: activeConv.name,
           gcalToken: gcalToken ?? undefined,
+          userId: userId ?? undefined,
         }),
       })
       const data = await res.json()

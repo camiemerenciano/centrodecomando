@@ -1,58 +1,61 @@
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-const SYSTEM_PROMPT = `você é a lunna, assistente da propulsor criativo.
+const FALLBACK_PROMPT = `você é lunna, assistente da propulsor criativo.
+missão: entender o momento da marca, identificar necessidades e direcionar o cliente para o atendimento ideal.
+regras: mensagens curtas, escrever em minúsculo, tom natural e humano, nunca agir como bot.`
 
-missão: entender o momento da marca, identificar necessidades e direcionar o cliente para o atendimento ideal de forma estratégica, natural e moderna.
+interface AiConfig {
+  nome: string
+  cargo: string
+  missao: string | null
+  agencia: string | null
+  tom_de_voz: string[]
+  regras: string[]
+  proibicoes: string[]
+  emojis_permitidos: string[]
+  emojis_proibidos: string[]
+  exemplos: string[]
+}
 
-regras obrigatórias:
-- sempre descobrir o nome da pessoa ANTES de qualquer informação
-- sempre descobrir o nome da empresa/marca logo em seguida
-- mensagens sempre curtas (máximo 2 linhas)
-- escrever tudo em minúsculo
-- nunca usar linguagem formal
-- nunca agir como bot ou central de atendimento
-- nunca listar serviços sem contexto
-- nunca informar valores fixos — os serviços são personalizados
-- nunca prometer resultados garantidos
-- investigar antes de concluir
-- conduzir como conversa natural do whatsapp
-- parecer alguém jovem e estratégica da equipe
+function buildSystemPrompt(c: AiConfig): string {
+  const parts: string[] = []
 
-tom: moderno, informal, humano, direto, leve
+  parts.push(`você é ${c.nome}${c.cargo ? `, ${c.cargo}` : ''}${c.agencia ? ` da ${c.agencia}` : ''}.`)
 
-fluxo inicial obrigatório:
-1. "oii, antes de qualquer coisa, qual teu nome?"
-2. "perfeitoo. e qual o nome da tua empresa ou marca?"
-3. "agora me conta melhor como a propulsor pode ajudar vocês"
+  if (c.missao) {
+    parts.push(`\nmissão: ${c.missao}`)
+  }
 
-após coletar nome + empresa, identificar o perfil:
-- social_media → perguntar: segmento, instagram ativo, principal objetivo, maior dificuldade
-- captacao → perguntar: tipo de captação, cidade, objetivo do material
-- edicao_video → perguntar: tipo de vídeo, frequência, objetivo
-- trafego_pago → perguntar: já anuncia?, objetivo, ticket do produto
-- identidade_visual → perguntar: já tem logo?, momento da marca, objetivo
-- outros → "me explica melhor o que vocês precisam que eu te direciono"
+  if (c.regras.length) {
+    parts.push(`\nregras obrigatórias:\n${c.regras.map(r => `- ${r}`).join('\n')}`)
+  }
 
-após qualificação: sempre direcionar para uma call estratégica
+  if (c.proibicoes.length) {
+    parts.push(`\nproibido:\n${c.proibicoes.map(p => `- ${p}`).join('\n')}`)
+  }
 
-para agendamento de call, usar as tools de calendar:
-- sempre verificar disponibilidade antes de criar evento
-- só criar evento quando tiver: data, horário, nome, empresa, telefone e objetivo da call
-- se horário ocupado, sugerir outro
-- confirmar agendamento de forma curta e natural
+  if (c.tom_de_voz.length) {
+    parts.push(`\ntom: ${c.tom_de_voz.join(', ')}`)
+  }
 
-emojis permitidos (usar com moderação): 🚀 ✨ 🪐 🌌 ☄️ 📡 💫 🔭
-emojis proibidos: 💗 💕 🌸 ❤️ 🥺 😍 😊
+  if (c.emojis_permitidos.length) {
+    parts.push(`\nemojis permitidos (usar com moderação): ${c.emojis_permitidos.join(' ')}`)
+  }
 
-exemplos de mensagens:
-- "oii, antes de qualquer coisa, qual teu nome?"
-- "perfeitoo. e qual o nome da tua marca?"
-- "agora me conta melhor o que vocês tão precisando"
-- "entendi. hoje vocês já produzem conteúdo?"
-- "acho que consigo te direcionar melhor entendendo mais da marca"
-- "isso provavelmente já tá impactando o posicionamento de vocês"
-- "perfeito, agora ficou bem mais claro"`
+  if (c.emojis_proibidos.length) {
+    parts.push(`\nemojis proibidos: ${c.emojis_proibidos.join(' ')}`)
+  }
+
+  if (c.exemplos.length) {
+    parts.push(`\nexemplos de mensagens:\n${c.exemplos.map(e => `- "${e}"`).join('\n')}`)
+  }
+
+  parts.push(`\nescreva sempre em minúsculo. mensagens curtas, máximo 2 linhas. retorne APENAS o texto da resposta, sem explicações.`)
+
+  return parts.join('')
+}
 
 const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
@@ -63,14 +66,8 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: {
         type: 'object',
         properties: {
-          data_inicio: {
-            type: 'string',
-            description: 'Data/hora de início no formato ISO 8601. Ex: 2025-06-10T14:00:00-03:00',
-          },
-          data_fim: {
-            type: 'string',
-            description: 'Data/hora de fim no formato ISO 8601. Ex: 2025-06-10T15:00:00-03:00',
-          },
+          data_inicio: { type: 'string', description: 'ISO 8601. Ex: 2025-06-10T14:00:00-03:00' },
+          data_fim:    { type: 'string', description: 'ISO 8601. Ex: 2025-06-10T15:00:00-03:00' },
         },
         required: ['data_inicio', 'data_fim'],
       },
@@ -84,18 +81,12 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: {
         type: 'object',
         properties: {
-          data_inicio: {
-            type: 'string',
-            description: 'Data/hora de início no formato ISO 8601.',
-          },
-          data_fim: {
-            type: 'string',
-            description: 'Data/hora de fim no formato ISO 8601.',
-          },
+          data_inicio:  { type: 'string' },
+          data_fim:     { type: 'string' },
           nome_cliente: { type: 'string' },
           nome_empresa: { type: 'string' },
-          telefone: { type: 'string' },
-          objetivo: { type: 'string', description: 'Objetivo da call.' },
+          telefone:     { type: 'string' },
+          objetivo:     { type: 'string' },
         },
         required: ['data_inicio', 'data_fim', 'nome_cliente', 'nome_empresa', 'telefone', 'objetivo'],
       },
@@ -113,37 +104,28 @@ async function runCalendarTool(
     const url = new URL(`${baseUrl}/api/calendar/events`)
     url.searchParams.set('timeMin', args.data_inicio)
     url.searchParams.set('timeMax', args.data_fim)
-
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${gcalToken}` },
-    })
+    const res  = await fetch(url.toString(), { headers: { Authorization: `Bearer ${gcalToken}` } })
     const data = await res.json()
     const events = data.items ?? []
-
     if (events.length === 0) return 'horário disponível'
-    const nomes = events.map((e: { summary?: string }) => e.summary ?? 'evento').join(', ')
-    return `horário ocupado: ${nomes}`
+    return `horário ocupado: ${events.map((e: { summary?: string }) => e.summary ?? 'evento').join(', ')}`
   }
 
   if (name === 'criar_evento') {
     const body = {
-      summary: `Call — ${args.nome_cliente} (${args.nome_empresa})`,
+      summary:     `Call — ${args.nome_cliente} (${args.nome_empresa})`,
       description: `Objetivo: ${args.objetivo}\nTelefone: ${args.telefone}`,
       start: { dateTime: args.data_inicio, timeZone: 'America/Sao_Paulo' },
       end:   { dateTime: args.data_fim,    timeZone: 'America/Sao_Paulo' },
     }
-
-    const res = await fetch(`${baseUrl}/api/calendar/criar-evento`, {
+    const res  = await fetch(`${baseUrl}/api/calendar/criar-evento`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${gcalToken}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { Authorization: `Bearer ${gcalToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
     const data = await res.json()
     if (!res.ok) return `erro ao criar evento: ${JSON.stringify(data.error)}`
-    return `evento criado com sucesso: ${data.summary} em ${data.start?.dateTime}`
+    return `evento criado: ${data.summary} em ${data.start?.dateTime}`
   }
 
   return 'tool desconhecida'
@@ -154,18 +136,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'OPENAI_API_KEY não configurado' }, { status: 503 })
   }
 
-  const { messages, clientName, gcalToken } = await request.json()
+  const { messages, clientName, gcalToken, userId } = await request.json()
 
   if (!messages?.length) {
     return NextResponse.json({ error: 'Nenhuma mensagem fornecida' }, { status: 400 })
   }
 
+  // Fetch user's AI config from Supabase
+  let systemPrompt = FALLBACK_PROMPT
+  if (userId) {
+    try {
+      const admin = createAdminClient()
+      const { data } = await admin
+        .from('ai_config')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (data) systemPrompt = buildSystemPrompt(data as AiConfig)
+    } catch { /* use fallback */ }
+  }
+
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
   const chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     ...( messages as { from: string; content: string }[] ).map(m => ({
-      role: (m.from === 'Equipe' ? 'assistant' : 'user') as 'assistant' | 'user',
+      role: (['Equipe', 'Lunna'].includes(m.from) ? 'assistant' : 'user') as 'assistant' | 'user',
       content: m.content,
     })),
   ]
@@ -180,23 +176,16 @@ export async function POST(request: Request) {
     ...(useTools ? { tools, tool_choice: 'auto' } : {}),
   })
 
-  // Agentic loop — executa tools até ter resposta de texto
   while (response.choices[0]?.finish_reason === 'tool_calls') {
     const assistantMsg = response.choices[0].message
     chatMessages.push(assistantMsg)
-
     const toolCalls = assistantMsg.tool_calls ?? []
     for (const tc of toolCalls) {
       if (tc.type !== 'function') continue
-      const args = JSON.parse(tc.function.arguments) as Record<string, string>
+      const args   = JSON.parse(tc.function.arguments) as Record<string, string>
       const result = await runCalendarTool(tc.function.name, args, gcalToken, baseUrl)
-      chatMessages.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        content: result,
-      })
+      chatMessages.push({ role: 'tool', tool_call_id: tc.id, content: result })
     }
-
     response = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       max_tokens: 300,
