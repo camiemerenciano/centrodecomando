@@ -464,25 +464,47 @@ export function MensagensModule() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function saveMeta(jid: string, patch: { status?: ConvStatus; stage?: string }) {
+  async function saveMeta(jid: string, patch: { status?: ConvStatus; stage?: string }) {
+    // localStorage — primary, instant, always works
     try {
       const raw  = localStorage.getItem('msg_meta')
       const meta = raw ? JSON.parse(raw) as Record<string, { status?: ConvStatus; stage?: string }> : {}
       meta[jid]  = { ...meta[jid], ...patch }
       localStorage.setItem('msg_meta', JSON.stringify(meta))
     } catch { /* ignore */ }
-    // best-effort DB save in background
-    fetch('/api/pipeline/leads', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ remote_jid: jid, ...(patch.stage ? { stage: patch.stage } : {}), ...(patch.status ? { conv_status: patch.status } : {}) }),
-    }).catch(() => {})
+
+    // Supabase browser client — secondary, so pipeline kanban sees the data
+    if (!userId) return
+    try {
+      const fields: Record<string, unknown> = {}
+      if (patch.stage)  fields.stage       = patch.stage
+      if (patch.status) fields.conv_status  = patch.status
+
+      const { data: existing } = await supabase
+        .from('pipeline_leads')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('remote_jid', jid)
+        .maybeSingle()
+
+      if (existing) {
+        await supabase.from('pipeline_leads').update(fields).eq('id', existing.id)
+      } else {
+        const phone = jid.split('@')[0] ?? jid
+        const name  = conversations.find(c => c.id === jid)?.name ?? `+${phone}`
+        await supabase.from('pipeline_leads').insert({
+          user_id: userId, remote_jid: jid, title: name, client: name,
+          stage: patch.stage ?? 'recepcao', priority: 'medium',
+          ...(patch.status ? { conv_status: patch.status } : {}),
+        })
+      }
+    } catch (err) { console.error('[saveMeta] DB error:', err) }
   }
 
   async function changePipelineStage(stage: PipelineStage) {
     if (!activeId) return
     setPipelineStageMap(prev => ({ ...prev, [activeId]: stage }))
-    saveMeta(activeId, { stage })
+    await saveMeta(activeId, { stage })
   }
 
   // Fetch client data for active conversation by phone match
@@ -567,7 +589,7 @@ export function MensagensModule() {
   async function changeStatus(status: ConvStatus) {
     if (!activeId) return
     setStatusMap(prev => ({ ...prev, [activeId]: status }))
-    saveMeta(activeId, { status })
+    await saveMeta(activeId, { status })
   }
 
   async function handleSummarize() {
