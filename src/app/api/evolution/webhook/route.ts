@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import OpenAI from 'openai'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -65,6 +65,9 @@ export async function POST(request: NextRequest) {
       if (first) processedIds.delete(first)
     }
 
+    // Return 200 to Evolution immediately — processing happens in background
+    // so Evolution never times out waiting for us.
+    after(async () => {
     const admin = createAdminClient()
 
     // Find user by instance name
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest) {
       .eq('evo_instance', instanceName)
       .maybeSingle()
 
-    if (!integration?.user_id) return NextResponse.json({ ok: true })
+    if (!integration?.user_id) return
 
     const { user_id, evo_api_url, evo_api_key, gcal_access_token, gcal_refresh_token } = integration
 
@@ -127,7 +130,7 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user_id)
       .eq('remote_jid', remoteJid)
       .maybeSingle()
-    if (pausa) return NextResponse.json({ ok: true })
+    if (pausa) return
 
     // Fetch message history for context
     const base    = (evo_api_url as string).replace(/\/$/, '')
@@ -186,7 +189,7 @@ export async function POST(request: NextRequest) {
     if (aiConfig) systemPrompt = buildSystemPrompt(aiConfig as AiConfig, areas)
 
     // Generate reply
-    if (!process.env.OPENAI_API_KEY) return NextResponse.json({ ok: true })
+    if (!process.env.OPENAI_API_KEY) return
 
     const calendarTools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       {
@@ -296,7 +299,10 @@ export async function POST(request: NextRequest) {
     }
 
     const reply = response.choices[0]?.message?.content?.trim()
-    if (!reply) return NextResponse.json({ ok: true })
+    if (!reply) return
+
+    // Simulate human typing delay (35s) — after() keeps the function alive
+    await new Promise(resolve => setTimeout(resolve, 35_000))
 
     // Send reply via Evolution
     await fetch(`${base}/message/sendText/${instanceName}`, {
@@ -304,6 +310,7 @@ export async function POST(request: NextRequest) {
       headers,
       body: JSON.stringify({ number: remoteJid, text: reply }),
     })
+    }) // end after()
 
     return NextResponse.json({ ok: true })
   } catch (err) {
