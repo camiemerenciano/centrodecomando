@@ -9,24 +9,42 @@ interface AiConfig {
   nome: string; cargo: string; missao: string | null; agencia: string | null
   tom_de_voz: string[]; regras: string[]; proibicoes: string[]
   emojis_permitidos: string[]; emojis_proibidos: string[]; exemplos: string[]
+  conhecimento?: string | null
 }
 
 function buildSystemPrompt(c: AiConfig, areas: string[]): string {
   const parts: string[] = []
+
   parts.push(`você é ${c.nome}${c.cargo ? `, ${c.cargo}` : ''}${c.agencia ? ` da ${c.agencia}` : ''}.`)
-  if (c.missao)            parts.push(`\nmissão: ${c.missao}`)
-  if (areas.length)        parts.push(`\nserviços que a agência oferece (SOMENTE ofereça estes, nunca mencione outros): ${areas.join(', ')}`)
-  if (c.regras.length)     parts.push(`\nregras obrigatórias:\n${c.regras.map(r => `- ${r}`).join('\n')}`)
-  if (c.proibicoes.length) parts.push(`\nproibido:\n${c.proibicoes.map(p => `- ${p}`).join('\n')}`)
-  if (c.tom_de_voz.length) parts.push(`\ntom: ${c.tom_de_voz.join(', ')}`)
-  if (c.emojis_permitidos.length) parts.push(`\nemojis permitidos (usar com moderação): ${c.emojis_permitidos.join(' ')}`)
-  if (c.emojis_proibidos.length)  parts.push(`\nemojis proibidos: ${c.emojis_proibidos.join(' ')}`)
-  if (c.exemplos.length) parts.push(`\nexemplos:\n${c.exemplos.map(e => `- "${e}"`).join('\n')}`)
-  parts.push(`\nescreva sempre em minúsculo. máximo 2 linhas. retorne APENAS o texto da resposta.`)
+  parts.push(`\n\nvocê é um ser humano conversando pelo whatsapp. nunca admita ser uma ia ou bot, mesmo que perguntem diretamente. se perguntarem, desvie naturalmente.`)
+
+  if (c.missao) parts.push(`\n\nmissão: ${c.missao}`)
+
+  if (c.conhecimento?.trim()) {
+    parts.push(`\n\nbase de conhecimento sobre os serviços e a empresa (use isso para responder perguntas com propriedade):\n${c.conhecimento}`)
+  }
+
+  if (areas.length) parts.push(`\n\nserviços oferecidos (SOMENTE estes, nunca mencione outros): ${areas.join(', ')}`)
+
+  if (c.regras.length) parts.push(`\n\nregras:\n${c.regras.map(r => `- ${r}`).join('\n')}`)
+  if (c.proibicoes.length) parts.push(`\n\nproibido:\n${c.proibicoes.map(p => `- ${p}`).join('\n')}`)
+  if (c.tom_de_voz.length) parts.push(`\n\ntom: ${c.tom_de_voz.join(', ')}`)
+  if (c.emojis_permitidos.length) parts.push(`\n\nemojis permitidos (usar com moderação, apenas 1 por mensagem no máximo): ${c.emojis_permitidos.join(' ')}`)
+  if (c.emojis_proibidos.length) parts.push(`\nemojis proibidos: ${c.emojis_proibidos.join(' ')}`)
+
+  if (c.exemplos.length) parts.push(`\n\nexemplos de como você escreve:\n${c.exemplos.map(e => `- "${e}"`).join('\n')}`)
+
+  parts.push(`\n\nregras de formato:
+- escreva SEMPRE em minúsculo
+- mensagens curtas como no whatsapp (1-3 linhas)
+- nunca use listas com bullet points, pontos ou numeração
+- varie o tamanho das mensagens para soar natural
+- retorne APENAS o texto da resposta, sem explicações nem aspas`)
+
   return parts.join('')
 }
 
-const FALLBACK_PROMPT = `você é lunna, assistente virtual. responda de forma natural, curta e em minúsculo.`
+const FALLBACK_PROMPT = `você é lunna, assistente virtual. responda de forma natural, curta e em minúsculo. nunca admita ser uma ia.`
 
 function extractText(msg: Record<string, unknown>): string {
   const m = (msg.message ?? msg) as Record<string, unknown>
@@ -306,9 +324,9 @@ export async function POST(request: NextRequest) {
       ]
 
       let response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        temperature: 0.3,
-        max_tokens: 300,
+        model: 'gpt-4o',
+        temperature: 0.75,
+        max_tokens: 400,
         messages: chatMessages,
         tools: allTools,
         tool_choice: 'auto',
@@ -324,9 +342,9 @@ export async function POST(request: NextRequest) {
           chatMessages.push({ role: 'tool', tool_call_id: tc.id, content: result })
         }
         response = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          temperature: 0.3,
-          max_tokens: 300,
+          model: 'gpt-4o',
+          temperature: 0.75,
+          max_tokens: 400,
           messages: chatMessages,
           tools: allTools,
           tool_choice: 'auto',

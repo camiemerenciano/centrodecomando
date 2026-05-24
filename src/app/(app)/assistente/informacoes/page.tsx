@@ -241,6 +241,7 @@ export default function InformacoesPage() {
   const [missao,  setMissao]  = useState(DEFAULTS.missao)
   const [agencia, setAgencia] = useState(DEFAULTS.agencia)
 
+  const [conhecimento,      setConhecimento]      = useState('')
   const [tomDeVoz,          setTomDeVoz]          = useState<string[]>(DEFAULTS.tom_de_voz)
   const [regras,            setRegras]            = useState<string[]>(DEFAULTS.regras)
   const [proibicoes,        setProibicoes]        = useState<string[]>(DEFAULTS.proibicoes)
@@ -269,6 +270,7 @@ export default function InformacoesPage() {
         setEmojisPermitidos(data.emojis_permitidos?.length ? data.emojis_permitidos : DEFAULTS.emojis_permitidos)
         setEmojisProibidos(data.emojis_proibidos?.length   ? data.emojis_proibidos  : DEFAULTS.emojis_proibidos)
         setExemplos(data.exemplos?.length      ? data.exemplos      : DEFAULTS.exemplos)
+        setConhecimento(data.conhecimento ?? '')
       } else {
         // First access — persist defaults so the webhook always has a config
         await supabase.from('ai_config').upsert({
@@ -283,6 +285,7 @@ export default function InformacoesPage() {
           emojis_permitidos: DEFAULTS.emojis_permitidos,
           emojis_proibidos:  DEFAULTS.emojis_proibidos,
           exemplos:          DEFAULTS.exemplos,
+          conhecimento:      '',
         }, { onConflict: 'user_id' })
       }
       setFetching(false)
@@ -307,6 +310,7 @@ export default function InformacoesPage() {
       emojis_permitidos: emojisPermitidos,
       emojis_proibidos:  emojisProibidos,
       exemplos,
+      conhecimento,
       updated_at:        new Date().toISOString(),
     }, { onConflict: 'user_id' })
 
@@ -371,6 +375,29 @@ export default function InformacoesPage() {
             className={textareaCls}
           />
         </Field>
+      </Section>
+
+      {/* Base de Conhecimento */}
+      <Section
+        title="Base de Conhecimento do Produto"
+        description="Escreva aqui tudo sobre seus serviços, diferenciais, processo, preços, perguntas frequentes, cases — quanto mais detalhes, melhor a IA responde."
+      >
+        <textarea
+          value={conhecimento}
+          onChange={e => setConhecimento(e.target.value)}
+          placeholder={`Exemplos do que incluir:
+
+• O que é cada serviço e para quem é indicado
+• Como funciona o processo (ex: briefing → criação → entrega)
+• Diferenciais em relação à concorrência
+• Perguntas frequentes e suas respostas
+• Valores médios ou forma de precificação
+• Prazo de entrega
+• Cases ou resultados obtidos
+• Quem é a equipe`}
+          rows={14}
+          className={textareaCls}
+        />
       </Section>
 
       {/* Tom de voz */}
