@@ -281,7 +281,12 @@ export function MensagensModule() {
       if (!res.ok || !Array.isArray(data)) return
       const mapped = data.map(mapChat).filter(c => c.id)
       setConversations(mapped)
-      if (mapped.length > 0 && !activeId) setActiveId(mapped[0].id)
+      if (mapped.length > 0 && !activeId) {
+        // Restore last active conversation from localStorage, fall back to first
+        const saved = localStorage.getItem('mensagens_activeId')
+        const restored = saved && mapped.some(c => c.id === saved) ? saved : mapped[0].id
+        setActiveId(restored)
+      }
     } finally {
       setLoadingChats(false)
     }
@@ -516,6 +521,7 @@ export function MensagensModule() {
 
   function selectConversation(id: string) {
     setActiveId(id)
+    localStorage.setItem('mensagens_activeId', id)
     setShowTaskForm(false)
     setConversations(prev => prev.map(c => c.id === id ? { ...c, unread: 0 } : c))
   }
