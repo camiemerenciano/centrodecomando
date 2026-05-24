@@ -835,7 +835,7 @@ export function MensagensModule() {
             </div>
             <div className="flex-1 min-w-0">
               <p className={`text-xs font-semibold leading-tight ${isLunnaActive ? 'text-foreground' : 'text-muted-foreground'}`}>
-                {isLunnaTyping ? 'lunna digitando…' : isLunnaActive ? 'lunna ativa' : 'atendimento humano'}
+                {isLunnaTyping ? 'lunna digitando…' : isLunnaActive ? 'IA ativa' : 'atendimento humano'}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
                 {isLunnaActive ? 'respondendo automaticamente' : 'lunna pausada'}
