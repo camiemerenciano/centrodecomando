@@ -339,19 +339,10 @@ export function MensagensModule() {
           return
         }
 
+        // Mark all as seen (webhook handles the actual AI reply — polling only updates UI)
         const seen = seenMsgIds.current[activeId] ?? new Set<string>()
-
-        // Find client messages that arrived after initial load
-        const newClientMsgs = mapped.filter(m => !m.mine && m.type === 'text' && !seen.has(m.id))
-
-        // Mark all as seen
         mapped.forEach(m => seen.add(m.id))
         seenMsgIds.current[activeId] = seen
-
-        const isLunna = lunnaActiveRef.current[activeId] ?? true
-        if (newClientMsgs.length > 0 && isLunna) {
-          lunnaAutoReply(activeId, mapped)
-        }
 
         setMessagesMap(prev => {
           const current = prev[activeId] ?? []
