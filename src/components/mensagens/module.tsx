@@ -446,52 +446,43 @@ export function MensagensModule() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations.length])
 
-  // Load pipeline stages + conversation status for all conversations via admin API
+  // Load status + stage from localStorage on mount (instant, reliable)
   useEffect(() => {
-    if (conversations.length === 0) return
-    fetch('/api/pipeline/leads')
-      .then(r => r.ok ? r.json() : [])
-      .then((data: { remote_jid: string; stage: string; conv_status?: string }[]) => {
-        if (!Array.isArray(data)) return
-        console.log('[pipeline] loaded leads from DB:', data)
-        const stageMap: Record<string, string> = {}
-        const convStatusMap: Record<string, ConvStatus> = {}
-        for (const row of data) {
-          if (row.remote_jid) {
-            stageMap[row.remote_jid] = row.stage
-            if (row.conv_status) convStatusMap[row.remote_jid] = row.conv_status as ConvStatus
-          }
-        }
-        setPipelineStageMap(stageMap)
-        setStatusMap(prev => ({ ...prev, ...convStatusMap }))
-      })
+    try {
+      const raw = localStorage.getItem('msg_meta')
+      if (!raw) return
+      const meta = JSON.parse(raw) as Record<string, { status?: ConvStatus; stage?: string }>
+      const stageMap: Record<string, string> = {}
+      const statusMapLocal: Record<string, ConvStatus> = {}
+      for (const [jid, val] of Object.entries(meta)) {
+        if (val.stage)  stageMap[jid]     = val.stage
+        if (val.status) statusMapLocal[jid] = val.status
+      }
+      setPipelineStageMap(stageMap)
+      setStatusMap(statusMapLocal)
+    } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversations.length])
+  }, [])
 
-  // Reload stage + status from DB whenever active conversation changes
-  useEffect(() => {
-    if (!activeId) return
-    fetch('/api/pipeline/leads')
-      .then(r => r.ok ? r.json() : [])
-      .then((data: { remote_jid: string; stage: string; conv_status?: string }[]) => {
-        if (!Array.isArray(data)) return
-        const row = data.find(d => d.remote_jid === activeId)
-        if (!row) return
-        if (row.stage)       setPipelineStageMap(prev => ({ ...prev, [activeId]: row.stage }))
-        if (row.conv_status) setStatusMap(prev => ({ ...prev, [activeId]: row.conv_status as ConvStatus }))
-      })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId])
+  function saveMeta(jid: string, patch: { status?: ConvStatus; stage?: string }) {
+    try {
+      const raw  = localStorage.getItem('msg_meta')
+      const meta = raw ? JSON.parse(raw) as Record<string, { status?: ConvStatus; stage?: string }> : {}
+      meta[jid]  = { ...meta[jid], ...patch }
+      localStorage.setItem('msg_meta', JSON.stringify(meta))
+    } catch { /* ignore */ }
+    // best-effort DB save in background
+    fetch('/api/pipeline/leads', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remote_jid: jid, ...(patch.stage ? { stage: patch.stage } : {}), ...(patch.status ? { conv_status: patch.status } : {}) }),
+    }).catch(() => {})
+  }
 
   async function changePipelineStage(stage: PipelineStage) {
     if (!activeId) return
     setPipelineStageMap(prev => ({ ...prev, [activeId]: stage }))
-    const res = await fetch('/api/pipeline/leads', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ remote_jid: activeId, stage }),
-    })
-    if (!res.ok) console.error('[pipeline stage] save failed:', await res.json().catch(() => res.status))
+    saveMeta(activeId, { stage })
   }
 
   // Fetch client data for active conversation by phone match
@@ -576,12 +567,7 @@ export function MensagensModule() {
   async function changeStatus(status: ConvStatus) {
     if (!activeId) return
     setStatusMap(prev => ({ ...prev, [activeId]: status }))
-    const res = await fetch('/api/pipeline/leads', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ remote_jid: activeId, conv_status: status }),
-    })
-    if (!res.ok) console.error('[conv status] save failed:', await res.json().catch(() => res.status))
+    saveMeta(activeId, { status })
   }
 
   async function handleSummarize() {
