@@ -70,13 +70,13 @@ export async function POST(request: NextRequest) {
     // Find user by instance name
     const { data: integration } = await admin
       .from('integracoes')
-      .select('user_id, evo_api_url, evo_api_key')
+      .select('user_id, evo_api_url, evo_api_key, gcal_access_token')
       .eq('evo_instance', instanceName)
       .maybeSingle()
 
     if (!integration?.user_id) return NextResponse.json({ ok: true })
 
-    const { user_id, evo_api_url, evo_api_key } = integration
+    const { user_id, evo_api_url, evo_api_key, gcal_access_token } = integration
 
     // Auto-create pipeline lead if this contact has no existing lead
     const { data: existingLead } = await admin
@@ -165,21 +165,116 @@ export async function POST(request: NextRequest) {
     // Generate reply
     if (!process.env.OPENAI_API_KEY) return NextResponse.json({ ok: true })
 
+    const gcalToken = gcal_access_token as string | null | undefined
+
+    const calendarTools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+      {
+        type: 'function',
+        function: {
+          name: 'consultar_disponibilidade',
+          description: 'Consulta eventos no Google Agenda para verificar se um horário está disponível.',
+          parameters: {
+            type: 'object',
+            properties: {
+              data_inicio: { type: 'string', description: 'ISO 8601. Ex: 2025-06-10T14:00:00-03:00' },
+              data_fim:    { type: 'string', description: 'ISO 8601. Ex: 2025-06-10T15:00:00-03:00' },
+            },
+            required: ['data_inicio', 'data_fim'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'criar_evento',
+          description: 'Cria um evento no Google Agenda para a call com o cliente.',
+          parameters: {
+            type: 'object',
+            properties: {
+              data_inicio:  { type: 'string' },
+              data_fim:     { type: 'string' },
+              nome_cliente: { type: 'string' },
+              nome_empresa: { type: 'string' },
+              telefone:     { type: 'string' },
+              objetivo:     { type: 'string' },
+            },
+            required: ['data_inicio', 'data_fim', 'nome_cliente', 'nome_empresa', 'telefone', 'objetivo'],
+          },
+        },
+      },
+    ]
+
+    async function runCalendarTool(name: string, args: Record<string, string>): Promise<string> {
+      if (!gcalToken) return 'google agenda não conectado'
+      if (name === 'consultar_disponibilidade') {
+        const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
+        url.searchParams.set('timeMin', args.data_inicio)
+        url.searchParams.set('timeMax', args.data_fim)
+        url.searchParams.set('singleEvents', 'true')
+        url.searchParams.set('orderBy', 'startTime')
+        url.searchParams.set('maxResults', '10')
+        const res  = await fetch(url.toString(), { headers: { Authorization: `Bearer ${gcalToken}` } })
+        const data = await res.json()
+        const events = data.items ?? []
+        if (events.length === 0) return 'horário disponível'
+        return `horário ocupado: ${events.map((e: { summary?: string }) => e.summary ?? 'evento').join(', ')}`
+      }
+      if (name === 'criar_evento') {
+        const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${gcalToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            summary:     `Call — ${args.nome_cliente} (${args.nome_empresa})`,
+            description: `Objetivo: ${args.objetivo}\nTelefone: ${args.telefone}`,
+            start: { dateTime: args.data_inicio, timeZone: 'America/Sao_Paulo' },
+            end:   { dateTime: args.data_fim,    timeZone: 'America/Sao_Paulo' },
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) return `erro ao criar evento: ${JSON.stringify(data.error)}`
+        return `evento criado: ${data.summary} em ${data.start?.dateTime}`
+      }
+      return 'tool desconhecida'
+    }
+
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-    const completion = await openai.chat.completions.create({
+    const chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      ...history.map(m => ({
+        role: (['Lunna', 'Equipe'].includes(m.from) ? 'assistant' : 'user') as 'assistant' | 'user',
+        content: m.content,
+      })),
+    ]
+
+    let response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.3,
       max_tokens: 300,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...history.map(m => ({
-          role: (['Lunna', 'Equipe'].includes(m.from) ? 'assistant' : 'user') as 'assistant' | 'user',
-          content: m.content,
-        })),
-      ],
+      messages: chatMessages,
+      ...(gcalToken ? { tools: calendarTools, tool_choice: 'auto' } : {}),
     })
 
-    const reply = completion.choices[0]?.message?.content?.trim()
+    while (response.choices[0]?.finish_reason === 'tool_calls') {
+      const assistantMsg = response.choices[0].message
+      chatMessages.push(assistantMsg)
+      const toolCalls = assistantMsg.tool_calls ?? []
+      for (const tc of toolCalls) {
+        if (tc.type !== 'function') continue
+        const args   = JSON.parse(tc.function.arguments) as Record<string, string>
+        const result = await runCalendarTool(tc.function.name, args)
+        chatMessages.push({ role: 'tool', tool_call_id: tc.id, content: result })
+      }
+      response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.3,
+        max_tokens: 300,
+        messages: chatMessages,
+        tools: calendarTools,
+        tool_choice: 'auto',
+      })
+    }
+
+    const reply = response.choices[0]?.message?.content?.trim()
     if (!reply) return NextResponse.json({ ok: true })
 
     // Send reply via Evolution
