@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import {
   Plus, LayoutGrid, List, X, Clock, MessageSquare,
   Circle, PlayCircle, Eye, CheckCircle2, Pencil, Hourglass,
-  Trash2,
+  Trash2, ChevronDown,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -232,17 +232,23 @@ function TaskFormPanel({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Cliente</label>
-              <select value={form.client ?? ''} onChange={field('client')} className={inp + ' cursor-pointer'}>
-                <option value="">— Sem cliente —</option>
-                {clientNames.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
+              <div className="relative">
+                <select value={form.client ?? ''} onChange={field('client')} className={inp + ' cursor-pointer appearance-none pr-7'}>
+                  <option value="">— Sem cliente —</option>
+                  {clientNames.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
             </div>
             <div>
               <label className={lbl}>Responsável</label>
-              <select value={form.assignee ?? ''} onChange={field('assignee')} className={inp + ' cursor-pointer'}>
-                <option value="">— Sem responsável —</option>
-                {memberNames.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
+              <div className="relative">
+                <select value={form.assignee ?? ''} onChange={field('assignee')} className={inp + ' cursor-pointer appearance-none pr-7'}>
+                  <option value="">— Sem responsável —</option>
+                  {memberNames.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
             </div>
           </div>
 
@@ -253,20 +259,26 @@ function TaskFormPanel({
             </div>
             <div>
               <label className={lbl}>Prioridade</label>
-              <select value={form.priority} onChange={field('priority')} className={inp + ' cursor-pointer'}>
-                <option value="urgent">🔴 Urgente</option>
-                <option value="high">🟠 Alta</option>
-                <option value="medium">🔵 Média</option>
-                <option value="low">⚪ Baixa</option>
-              </select>
+              <div className="relative">
+                <select value={form.priority} onChange={field('priority')} className={inp + ' cursor-pointer appearance-none pr-7'}>
+                  <option value="urgent">🔴 Urgente</option>
+                  <option value="high">🟠 Alta</option>
+                  <option value="medium">🔵 Média</option>
+                  <option value="low">⚪ Baixa</option>
+                </select>
+                <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
             </div>
           </div>
 
           <div>
             <label className={lbl}>Status</label>
-            <select value={form.status} onChange={field('status')} className={inp + ' cursor-pointer'}>
-              {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
-            </select>
+            <div className="relative">
+              <select value={form.status} onChange={field('status')} className={inp + ' cursor-pointer appearance-none pr-7'}>
+                {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
+              </select>
+              <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            </div>
           </div>
 
           <div>
