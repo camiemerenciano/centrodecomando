@@ -269,6 +269,21 @@ export default function InformacoesPage() {
         setEmojisPermitidos(data.emojis_permitidos?.length ? data.emojis_permitidos : DEFAULTS.emojis_permitidos)
         setEmojisProibidos(data.emojis_proibidos?.length   ? data.emojis_proibidos  : DEFAULTS.emojis_proibidos)
         setExemplos(data.exemplos?.length      ? data.exemplos      : DEFAULTS.exemplos)
+      } else {
+        // First access — persist defaults so the webhook always has a config
+        await supabase.from('ai_config').upsert({
+          user_id:           user.id,
+          nome:              DEFAULTS.nome,
+          cargo:             DEFAULTS.cargo,
+          missao:            DEFAULTS.missao,
+          agencia:           DEFAULTS.agencia,
+          tom_de_voz:        DEFAULTS.tom_de_voz,
+          regras:            DEFAULTS.regras,
+          proibicoes:        DEFAULTS.proibicoes,
+          emojis_permitidos: DEFAULTS.emojis_permitidos,
+          emojis_proibidos:  DEFAULTS.emojis_proibidos,
+          exemplos:          DEFAULTS.exemplos,
+        }, { onConflict: 'user_id' })
       }
       setFetching(false)
     })
