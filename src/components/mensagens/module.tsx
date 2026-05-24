@@ -450,6 +450,7 @@ export function MensagensModule() {
       .then(r => r.ok ? r.json() : [])
       .then((data: { remote_jid: string; stage: string; conv_status?: string }[]) => {
         if (!Array.isArray(data)) return
+        console.log('[pipeline] loaded leads from DB:', data)
         const stageMap: Record<string, string> = {}
         const convStatusMap: Record<string, ConvStatus> = {}
         for (const row of data) {
@@ -482,11 +483,12 @@ export function MensagensModule() {
   async function changePipelineStage(stage: PipelineStage) {
     if (!activeId) return
     setPipelineStageMap(prev => ({ ...prev, [activeId]: stage }))
-    await fetch('/api/pipeline/leads', {
+    const res = await fetch('/api/pipeline/leads', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remote_jid: activeId, stage }),
     })
+    if (!res.ok) console.error('[pipeline stage] save failed:', await res.json().catch(() => res.status))
   }
 
   // Fetch client data for active conversation by phone match
@@ -570,11 +572,12 @@ export function MensagensModule() {
   async function changeStatus(status: ConvStatus) {
     if (!activeId) return
     setStatusMap(prev => ({ ...prev, [activeId]: status }))
-    await fetch('/api/pipeline/leads', {
+    const res = await fetch('/api/pipeline/leads', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remote_jid: activeId, conv_status: status }),
     })
+    if (!res.ok) console.error('[conv status] save failed:', await res.json().catch(() => res.status))
   }
 
   async function handleSummarize() {
