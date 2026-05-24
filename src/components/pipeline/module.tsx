@@ -436,7 +436,6 @@ function CardFormPanel({
 // ─── Main module ──────────────────────────────────────────────────────────────
 
 export function PipelineModule() {
-  console.log('[pipeline] RENDERIZOU')
   const [cards, setCards]               = useState<PCard[]>([])
   const [activeCard, setActiveCard]     = useState<PCard | null>(null)
   const [showForm, setShowForm]         = useState(false)
@@ -449,44 +448,37 @@ export function PipelineModule() {
   useEffect(() => {
     async function fetchCards() {
       // 1. Get user ID
-      const { data: { user }, error: authErr } = await supabase.auth.getUser()
-      console.log('[pipeline] step1 user:', user?.id, authErr)
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-
       setUserId(user.id)
 
-      // 2. Get Evolution config from server
+      // Busca config da Evolution
       const cfgRes = await fetch('/api/evolution/config')
-      const cfgData = await cfgRes.json()
-      console.log('[pipeline] step2 config:', cfgRes.status, cfgData)
       if (!cfgRes.ok) return
-      const { apiUrl, apiKey, instanceName } = cfgData
+      const { apiUrl, apiKey, instanceName } = await cfgRes.json()
       if (!apiUrl || !apiKey || !instanceName) return
 
-      // 3. Get pipeline metadata from DB (via admin API)
+      // Busca metadata de etapas do banco
       const leadsRes = await fetch('/api/pipeline/leads')
       const leadsData = leadsRes.ok ? await leadsRes.json() : []
-      console.log('[pipeline] step3 leads:', leadsData?.length)
       const metaByJid = new Map<string, Record<string, unknown>>(
         Array.isArray(leadsData) ? leadsData.map((l: Record<string, unknown>) => [l.remote_jid as string, l]) : []
       )
 
-      // 4. Fetch all chats from Evolution API
+      // Busca todos os chats da Evolution API
       const evoRes = await fetch('/api/evolution/chats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiUrl, apiKey, instanceName }),
       })
-      console.log('[pipeline] step4 evo status:', evoRes.status)
       if (!evoRes.ok) {
         if (Array.isArray(leadsData)) setCards(leadsData.map(fromRow))
         return
       }
       const chats = await evoRes.json()
-      console.log('[pipeline] step4 chats count:', Array.isArray(chats) ? chats.length : chats)
       if (!Array.isArray(chats)) return
 
-      // 5. Merge chats with pipeline metadata
+      // Combina chats com metadata do pipeline
       const contacts = chats
         .map((c: Record<string, unknown>) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -507,7 +499,6 @@ export function PipelineModule() {
         })
         .filter(Boolean) as Record<string, unknown>[]
 
-      console.log('[pipeline] step5 contacts after merge:', contacts.length)
       setCards(contacts.map(fromRow))
     }
 
