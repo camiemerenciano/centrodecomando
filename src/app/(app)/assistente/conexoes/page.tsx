@@ -379,6 +379,9 @@ function GoogleCalendarCard() {
   const [connectedName, setConnectedName]   = useState('')
   const [calendars, setCalendars]           = useState<GcalCalendar[]>([])
   const [authError, setAuthError]           = useState('')
+  const [syncing, setSyncing]               = useState(false)
+  const [syncOk, setSyncOk]                 = useState(false)
+  const [accessToken, setAccessToken]       = useState('')
   const supabase = createClient()
 
   function buildCalendars(email: string): GcalCalendar[] {
@@ -424,6 +427,7 @@ function GoogleCalendarCard() {
       }
 
       if (accessToken && data.gcal_email) {
+        setAccessToken(accessToken as string)
         setConnectedEmail(data.gcal_email)
         setConnectedName(data.gcal_name ?? '')
         setCalendars(buildCalendars(data.gcal_email))
@@ -492,6 +496,7 @@ function GoogleCalendarCard() {
       const refreshToken = e.data.refresh_token ?? ''
 
       saveToSupabase(token, refreshToken, email, name)
+      setAccessToken(token)
       setConnectedEmail(email)
       setConnectedName(name)
       setCalendars(buildCalendars(email))
@@ -514,6 +519,35 @@ function GoogleCalendarCard() {
     setStatus('disconnected')
     setConnectedEmail('')
     setConnectedName('')
+    setAccessToken('')
+  }
+
+  async function handleSync() {
+    if (!accessToken) return
+    setSyncing(true)
+    setSyncOk(false)
+    try {
+      const now    = new Date()
+      const oneWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+      const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
+      url.searchParams.set('timeMin', now.toISOString())
+      url.searchParams.set('timeMax', oneWeek.toISOString())
+      url.searchParams.set('maxResults', '5')
+      url.searchParams.set('singleEvents', 'true')
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (res.ok) {
+        setSyncOk(true)
+        setTimeout(() => setSyncOk(false), 3000)
+      } else {
+        setAuthError('Falha na sincronização. Tente reconectar.')
+      }
+    } catch {
+      setAuthError('Erro de conexão ao sincronizar.')
+    } finally {
+      setSyncing(false)
+    }
   }
 
   function toggleCalendar(id: string) {
@@ -622,8 +656,13 @@ function GoogleCalendarCard() {
           <div className="flex items-center gap-2 pt-1">
             {status === 'connected' ? (
               <>
-                <Button variant="outline" size="sm" className="h-8 text-xs border-border">
-                  <RefreshCw size={13} /> Sincronizar agora
+                <Button variant="outline" size="sm" className="h-8 text-xs border-border" onClick={handleSync} disabled={syncing}>
+                  {syncing
+                    ? <><Loader2 size={13} className="animate-spin" /> Sincronizando…</>
+                    : syncOk
+                    ? <><CheckCircle2 size={13} className="text-emerald-400" /> Sincronizado!</>
+                    : <><RefreshCw size={13} /> Sincronizar agora</>
+                  }
                 </Button>
                 <Button
                   variant="outline"
