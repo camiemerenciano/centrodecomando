@@ -443,23 +443,48 @@ export function MensagensModule() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations.length])
 
-  // Load pipeline stages for all conversations
+  // Load pipeline stages + conversation status for all conversations
   useEffect(() => {
     if (!userId || conversations.length === 0) return
     const jids = conversations.map(c => c.id).filter(Boolean)
     supabase
       .from('pipeline_leads')
-      .select('remote_jid, stage')
+      .select('remote_jid, stage, conv_status')
       .eq('user_id', userId)
       .in('remote_jid', jids)
       .then(({ data }) => {
         if (!data) return
-        const map: Record<string, string> = {}
-        for (const row of data) { if (row.remote_jid) map[row.remote_jid] = row.stage }
-        setPipelineStageMap(map)
+        const stageMap: Record<string, string> = {}
+        const convStatusMap: Record<string, ConvStatus> = {}
+        for (const row of data) {
+          if (row.remote_jid) {
+            stageMap[row.remote_jid] = row.stage
+            if (row.conv_status) convStatusMap[row.remote_jid] = row.conv_status as ConvStatus
+          }
+        }
+        setPipelineStageMap(stageMap)
+        setStatusMap(prev => ({ ...prev, ...convStatusMap }))
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations.length, userId])
+
+  // Reload stage + status from DB whenever active conversation changes
+  // (catches AI-driven updates that happened while the tab was open)
+  useEffect(() => {
+    if (!activeId || !userId) return
+    supabase
+      .from('pipeline_leads')
+      .select('stage, conv_status')
+      .eq('user_id', userId)
+      .eq('remote_jid', activeId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) return
+        if (data.stage)       setPipelineStageMap(prev => ({ ...prev, [activeId]: data.stage }))
+        if (data.conv_status) setStatusMap(prev => ({ ...prev, [activeId]: data.conv_status as ConvStatus }))
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, userId])
 
   async function changePipelineStage(stage: PipelineStage) {
     if (!activeId || !userId) return
@@ -560,9 +585,25 @@ export function MensagensModule() {
     setTimeout(() => setNotesSaved(false), 2000)
   }
 
-  function changeStatus(status: ConvStatus) {
-    if (!activeId) return
+  async function changeStatus(status: ConvStatus) {
+    if (!activeId || !userId) return
     setStatusMap(prev => ({ ...prev, [activeId]: status }))
+    const { data: existing } = await supabase
+      .from('pipeline_leads')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('remote_jid', activeId)
+      .maybeSingle()
+    if (existing) {
+      await supabase.from('pipeline_leads').update({ conv_status: status }).eq('id', existing.id)
+    } else {
+      const phone = activeId.split('@')[0] ?? activeId
+      const name  = activeConv?.name ?? `+${phone}`
+      await supabase.from('pipeline_leads').insert({
+        user_id: userId, title: name, client: name,
+        stage: 'recepcao', priority: 'medium', remote_jid: activeId, conv_status: status,
+      })
+    }
   }
 
   async function handleSummarize() {

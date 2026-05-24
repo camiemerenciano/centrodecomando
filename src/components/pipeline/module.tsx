@@ -456,6 +456,28 @@ export function PipelineModule() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: true })
       if (data) setCards(data.map(fromRow))
+
+      // Real-time: reflect webhook inserts/updates immediately
+      supabase
+        .channel('pipeline_realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'pipeline_leads', filter: `user_id=eq.${user.id}` },
+          payload => {
+            if (payload.eventType === 'INSERT') {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const newCard = fromRow(payload.new as any)
+              setCards(prev => prev.some(c => c.id === newCard.id) ? prev : [...prev, newCard])
+            } else if (payload.eventType === 'UPDATE') {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              setCards(prev => prev.map(c => c.id === (payload.new as any).id ? fromRow(payload.new as any) : c))
+            } else if (payload.eventType === 'DELETE') {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              setCards(prev => prev.filter(c => c.id !== (payload.old as any).id))
+            }
+          }
+        )
+        .subscribe()
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
