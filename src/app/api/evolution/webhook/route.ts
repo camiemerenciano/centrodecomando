@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     // Return 200 to Evolution immediately — processing happens in background
     // so Evolution never times out waiting for us.
-    after(async () => {
+    after(async () => { try {
     const admin = createAdminClient()
 
     // Find user by instance name
@@ -347,6 +347,7 @@ export async function POST(request: NextRequest) {
       headers,
       body: JSON.stringify({ number: remoteJid, text: reply }),
     })
+    } catch (err) { console.error('[webhook:after]', err) }
     }) // end after()
 
     return NextResponse.json({ ok: true })

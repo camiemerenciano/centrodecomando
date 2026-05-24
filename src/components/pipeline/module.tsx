@@ -446,40 +446,26 @@ export function PipelineModule() {
   const supabase = createClient()
 
   useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      setUserId(user.id)
+    let uid: string | null = null
+
+    async function fetchCards() {
+      if (!uid) {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+        uid = user.id
+        setUserId(user.id)
+      }
       const { data } = await supabase
         .from('pipeline_leads')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', uid)
         .order('created_at', { ascending: true })
       if (data) setCards(data.map(fromRow))
-
-      // Real-time: reflect webhook inserts/updates immediately
-      supabase
-        .channel('pipeline_realtime')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'pipeline_leads', filter: `user_id=eq.${user.id}` },
-          payload => {
-            if (payload.eventType === 'INSERT') {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const newCard = fromRow(payload.new as any)
-              setCards(prev => prev.some(c => c.id === newCard.id) ? prev : [...prev, newCard])
-            } else if (payload.eventType === 'UPDATE') {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              setCards(prev => prev.map(c => c.id === (payload.new as any).id ? fromRow(payload.new as any) : c))
-            } else if (payload.eventType === 'DELETE') {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              setCards(prev => prev.filter(c => c.id !== (payload.old as any).id))
-            }
-          }
-        )
-        .subscribe()
     }
-    load()
+
+    fetchCards()
+    const interval = setInterval(fetchCards, 10_000)
+    return () => clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
