@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,31 +11,28 @@ import {
   FileText, Pencil, Trash2, Save, ChevronRight,
   Hash, CreditCard, CheckSquare, Calendar,
 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Status = 'active' | 'paused' | 'churned'
 
 interface Client {
-  id: number
-  // Pessoal
+  id: string
   name: string
   email: string
   phone: string
   cpf: string
-  // Empresa
   company: string
   cnpj: string
   instagram: string
   website: string
   address: string
   segment: string
-  // Contrato
   status: Status
   plan: string
   mrr: string
   since: string
-  // Operação
   assignee: string
   assigneeInitials: string
   tasks: number
@@ -58,11 +55,56 @@ const planColor: Record<string, string> = {
 
 const PLANS    = ['Starter', 'Pro', 'Premium']
 const STATUSES: Status[] = ['active', 'paused', 'churned']
-const ASSIGNEES: { name: string; initials: string }[] = []
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
+function toRow(c: Client, userId: string) {
+  return {
+    id: c.id,
+    user_id: userId,
+    name: c.name,
+    email: c.email,
+    phone: c.phone,
+    cpf: c.cpf,
+    company: c.company,
+    cnpj: c.cnpj,
+    instagram: c.instagram,
+    website: c.website,
+    address: c.address,
+    segment: c.segment,
+    status: c.status,
+    plan: c.plan,
+    mrr: c.mrr,
+    since: c.since,
+    assignee: c.assignee,
+    assignee_initials: c.assigneeInitials,
+    tasks: c.tasks,
+    notes: c.notes,
+  }
+}
 
-const INITIAL_CLIENTS: Client[] = []
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fromRow(r: any): Client {
+  return {
+    id: r.id,
+    name: r.name ?? '',
+    email: r.email ?? '',
+    phone: r.phone ?? '',
+    cpf: r.cpf ?? '',
+    company: r.company ?? '',
+    cnpj: r.cnpj ?? '',
+    instagram: r.instagram ?? '',
+    website: r.website ?? '',
+    address: r.address ?? '',
+    segment: r.segment ?? '',
+    status: (r.status ?? 'active') as Status,
+    plan: r.plan ?? 'Starter',
+    mrr: r.mrr ?? 'R$ 0',
+    since: r.since ?? '',
+    assignee: r.assignee ?? '',
+    assigneeInitials: r.assignee_initials ?? '',
+    tasks: r.tasks ?? 0,
+    notes: r.notes ?? '',
+  }
+}
 
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
 
@@ -90,7 +132,7 @@ function ClientPanel({
   client: Client
   onClose: () => void
   onSave: (c: Client) => void
-  onDelete: (id: number) => void
+  onDelete: (id: string) => void
 }) {
   const [editing, setEditing]       = useState(false)
   const [form, setForm]             = useState<Client>(client)
@@ -130,13 +172,7 @@ function ClientPanel({
 
   function f(key: keyof Client) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      const val = e.target.value
-      if (key === 'assignee') {
-        const a = ASSIGNEES.find(x => x.name === val)
-        setForm(p => ({ ...p, assignee: val, assigneeInitials: a?.initials ?? p.assigneeInitials }))
-      } else {
-        setForm(p => ({ ...p, [key]: val }))
-      }
+      setForm(p => ({ ...p, [key]: e.target.value }))
     }
   }
 
@@ -204,7 +240,6 @@ function ClientPanel({
           {/* ── View mode ── */}
           {!editing ? (
             <>
-              {/* Pessoal */}
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Informações Pessoais</p>
                 <InfoRow icon={Mail}       label="Email"    value={form.email}   />
@@ -212,7 +247,6 @@ function ClientPanel({
                 <InfoRow icon={CreditCard} label="CPF"      value={form.cpf}     />
               </section>
 
-              {/* Empresa */}
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Informações Empresariais</p>
                 <InfoRow icon={Building2} label="Empresa"   value={form.company}   />
@@ -223,26 +257,26 @@ function ClientPanel({
                 <InfoRow icon={BarChart3} label="Segmento"  value={form.segment}   />
               </section>
 
-              {/* Contrato */}
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Contrato</p>
-                <InfoRow icon={FileText}  label="Plano"   value={form.plan}  />
-                <InfoRow icon={DollarSign}label="MRR"     value={form.mrr}   />
+                <InfoRow icon={FileText}  label="Plano"        value={form.plan}  />
+                <InfoRow icon={DollarSign}label="MRR"          value={form.mrr}   />
                 <InfoRow icon={Calendar}  label="Cliente desde" value={form.since} />
               </section>
 
-              {/* Operação */}
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Operação</p>
-                <div className="flex items-center gap-2.5">
-                  <Avatar className="w-6 h-6 shrink-0">
-                    <AvatarFallback className="text-[10px] bg-primary/20 text-primary font-semibold">{form.assigneeInitials}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Responsável</p>
-                    <p className="text-xs text-foreground mt-0.5">{form.assignee}</p>
+                {form.assignee && (
+                  <div className="flex items-center gap-2.5">
+                    <Avatar className="w-6 h-6 shrink-0">
+                      <AvatarFallback className="text-[10px] bg-primary/20 text-primary font-semibold">{form.assigneeInitials}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Responsável</p>
+                      <p className="text-xs text-foreground mt-0.5">{form.assignee}</p>
+                    </div>
                   </div>
-                </div>
+                )}
                 <div className="flex items-center gap-2.5">
                   <CheckSquare size={13} className="text-muted-foreground shrink-0" />
                   <div>
@@ -252,7 +286,6 @@ function ClientPanel({
                 </div>
               </section>
 
-              {/* Notas */}
               {form.notes && (
                 <section className="space-y-2">
                   <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Notas</p>
@@ -309,7 +342,7 @@ function ClientPanel({
                     </div>
                     <button
                       onClick={criarAcesso}
-                      disabled={inviting || senhaTmp.length < 6}
+                      disabled={inviting || !client.email || senhaTmp.length < 6}
                       className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-40 text-xs font-medium transition-all border border-primary/20"
                     >
                       {inviting ? 'Criando acesso...' : 'Criar acesso'}
@@ -321,7 +354,6 @@ function ClientPanel({
           ) : (
             /* ── Edit mode ── */
             <>
-              {/* Pessoal */}
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Informações Pessoais</p>
                 <div><label className={lbl}>Nome</label><input value={form.name} onChange={f('name')} className={inp} /></div>
@@ -330,18 +362,16 @@ function ClientPanel({
                 <div><label className={lbl}>CPF</label><input value={form.cpf} onChange={f('cpf')} className={inp} placeholder="000.000.000-00" /></div>
               </section>
 
-              {/* Empresa */}
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Informações Empresariais</p>
                 <div><label className={lbl}>Empresa</label><input value={form.company} onChange={f('company')} className={inp} /></div>
                 <div><label className={lbl}>CNPJ</label><input value={form.cnpj} onChange={f('cnpj')} className={inp} placeholder="00.000.000/0001-00" /></div>
                 <div><label className={lbl}>Instagram</label><input value={form.instagram} onChange={f('instagram')} className={inp} placeholder="@conta" /></div>
-                <div><label className={lbl}>Website</label><input value={form.website} onChange={f('website')} className={inp} placeholder="site.com.br" /></div>
+                <div><label className={lbl}>Website</label><input value={form.website} onChange={f('website')} className={inp} /></div>
                 <div><label className={lbl}>Endereço</label><input value={form.address} onChange={f('address')} className={inp} /></div>
                 <div><label className={lbl}>Segmento</label><input value={form.segment} onChange={f('segment')} className={inp} placeholder="Ex: Moda, Fitness..." /></div>
               </section>
 
-              {/* Contrato */}
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Contrato</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -362,18 +392,11 @@ function ClientPanel({
                 <div><label className={lbl}>Cliente desde</label><input value={form.since} onChange={f('since')} className={inp} placeholder="Jan/24" /></div>
               </section>
 
-              {/* Operação */}
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Operação</p>
-                <div>
-                  <label className={lbl}>Responsável</label>
-                  <select value={form.assignee} onChange={f('assignee')} className={inp + ' cursor-pointer'}>
-                    {ASSIGNEES.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
-                  </select>
-                </div>
+                <div><label className={lbl}>Responsável</label><input value={form.assignee} onChange={f('assignee')} className={inp} placeholder="Nome do responsável" /></div>
               </section>
 
-              {/* Notas */}
               <section className="space-y-2">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Notas</p>
                 <textarea
@@ -406,35 +429,31 @@ function ClientPanel({
 
 // ─── NewClientPanel ───────────────────────────────────────────────────────────
 
-function NewClientPanel({ onClose, onCreate }: { onClose: () => void; onCreate: (c: Client) => void }) {
+function NewClientPanel({ onClose, onCreate }: { onClose: () => void; onCreate: (c: Omit<Client, 'id'>) => void }) {
   const [form, setForm] = useState<Partial<Client>>({
     status: 'active', plan: 'Starter', mrr: 'R$ 0', since: '',
-    assignee: ASSIGNEES[0].name, assigneeInitials: ASSIGNEES[0].initials, tasks: 0, notes: '',
+    assignee: '', assigneeInitials: '', tasks: 0, notes: '',
   })
+  const [saving, setSaving] = useState(false)
 
   function f(key: keyof Client) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      const val = e.target.value
-      if (key === 'assignee') {
-        const a = ASSIGNEES.find(x => x.name === val)
-        setForm(p => ({ ...p, assignee: val, assigneeInitials: a?.initials ?? '' }))
-      } else {
-        setForm(p => ({ ...p, [key]: val }))
-      }
+      setForm(p => ({ ...p, [key]: e.target.value }))
     }
   }
 
-  function create() {
+  async function create() {
     if (!form.name?.trim() || !form.company?.trim()) return
-    onCreate({
-      id: Date.now(),
+    setSaving(true)
+    await onCreate({
       name: form.name!, email: form.email ?? '', phone: form.phone ?? '', cpf: form.cpf ?? '',
       company: form.company!, cnpj: form.cnpj ?? '', instagram: form.instagram ?? '',
       website: form.website ?? '', address: form.address ?? '', segment: form.segment ?? '',
       status: form.status!, plan: form.plan!, mrr: form.mrr!, since: form.since ?? '',
-      assignee: form.assignee!, assigneeInitials: form.assigneeInitials!,
+      assignee: form.assignee ?? '', assigneeInitials: form.assigneeInitials ?? '',
       tasks: 0, notes: form.notes ?? '',
     })
+    setSaving(false)
   }
 
   const inp = 'w-full h-8 rounded-lg bg-muted border border-border px-3 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all'
@@ -486,12 +505,7 @@ function NewClientPanel({ onClose, onCreate }: { onClose: () => void; onCreate: 
           </section>
           <section className="space-y-3">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Operação</p>
-            <div>
-              <label className={lbl}>Responsável</label>
-              <select value={form.assignee} onChange={f('assignee')} className={inp + ' cursor-pointer'}>
-                {ASSIGNEES.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
-              </select>
-            </div>
+            <div><label className={lbl}>Responsável</label><input value={form.assignee ?? ''} onChange={f('assignee')} className={inp} placeholder="Nome do responsável" /></div>
           </section>
           <section className="space-y-2">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Notas</p>
@@ -500,8 +514,8 @@ function NewClientPanel({ onClose, onCreate }: { onClose: () => void; onCreate: 
         </div>
         <div className="px-5 py-4 border-t border-border flex items-center justify-between shrink-0">
           <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
-          <Button size="sm" onClick={create} disabled={!form.name?.trim() || !form.company?.trim()} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
-            <Plus size={12} /> Criar cliente
+          <Button size="sm" onClick={create} disabled={saving || !form.name?.trim() || !form.company?.trim()} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
+            <Plus size={12} /> {saving ? 'Salvando...' : 'Criar cliente'}
           </Button>
         </div>
       </div>
@@ -512,11 +526,29 @@ function NewClientPanel({ onClose, onCreate }: { onClose: () => void; onCreate: 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ClientesPage() {
-  const [clients, setClients]     = useState(INITIAL_CLIENTS)
+  const [clients, setClients]     = useState<Client[]>([])
   const [selected, setSelected]   = useState<Client | null>(null)
   const [showNew, setShowNew]     = useState(false)
   const [search, setSearch]       = useState('')
   const [filter, setFilter]       = useState<'all' | Status>('all')
+  const [userId, setUserId]       = useState<string | null>(null)
+
+  const supabase = createClient()
+
+  useEffect(() => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      setUserId(user.id)
+      const { data } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+      if (data) setClients(data.map(fromRow))
+    }
+    load()
+  }, [])
 
   const filtered = useMemo(() => clients.filter(c => {
     if (filter !== 'all' && c.status !== filter) return false
@@ -527,34 +559,65 @@ export default function ClientesPage() {
     return true
   }), [clients, filter, search])
 
-  function handleSave(updated: Client) {
+  async function handleSave(updated: Client) {
+    if (!userId) return
+    await supabase.from('clientes').update(toRow(updated, userId)).eq('id', updated.id)
     setClients(prev => prev.map(c => c.id === updated.id ? updated : c))
     setSelected(updated)
   }
 
-  function handleDelete(id: number) {
+  async function handleDelete(id: string) {
+    await supabase.from('clientes').delete().eq('id', id)
     setClients(prev => prev.filter(c => c.id !== id))
     setSelected(null)
   }
 
-  function handleCreate(c: Client) {
-    setClients(prev => [...prev, c])
+  async function handleCreate(data: Omit<Client, 'id'>) {
+    if (!userId) return
+    const assigneeInitials = data.assignee
+      ? data.assignee.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
+      : ''
+    const row = {
+      user_id: userId,
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      cpf: data.cpf,
+      company: data.company,
+      cnpj: data.cnpj,
+      instagram: data.instagram,
+      website: data.website,
+      address: data.address,
+      segment: data.segment,
+      status: data.status,
+      plan: data.plan,
+      mrr: data.mrr,
+      since: data.since,
+      assignee: data.assignee,
+      assignee_initials: assigneeInitials,
+      tasks: data.tasks,
+      notes: data.notes,
+    }
+    const { data: inserted, error } = await supabase.from('clientes').insert(row).select().single()
+    if (error || !inserted) return
+    const client = fromRow(inserted)
+    setClients(prev => [...prev, client])
     setShowNew(false)
-    setSelected(c)
+    setSelected(client)
   }
 
-  const activeCount  = clients.filter(c => c.status === 'active').length
-  const mrrTotal     = clients.filter(c => c.status === 'active').reduce((sum, c) => {
+  const activeCount = clients.filter(c => c.status === 'active').length
+  const mrrTotal    = clients.filter(c => c.status === 'active').reduce((sum, c) => {
     const n = parseFloat(c.mrr.replace(/[^\d,]/g, '').replace(',', '.')) || 0
     return sum + n
   }, 0)
   const ticket = activeCount > 0 ? mrrTotal / activeCount : 0
 
   const dynamicStats = [
-    { label: 'Total Clientes', value: String(clients.length),              icon: Users,      color: 'text-orange-400',  bg: 'bg-orange-400/10'  },
-    { label: 'Ativos',         value: String(activeCount),                 icon: TrendingUp, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
-    { label: 'MRR Total',      value: `R$ ${mrrTotal.toLocaleString('pt-BR')}`, icon: DollarSign, color: 'text-amber-400',  bg: 'bg-amber-400/10'   },
-    { label: 'Ticket Médio',   value: `R$ ${Math.round(ticket).toLocaleString('pt-BR')}`,   icon: BarChart3,  color: 'text-sky-400',    bg: 'bg-sky-400/10'     },
+    { label: 'Total Clientes', value: String(clients.length),                    icon: Users,      color: 'text-orange-400',  bg: 'bg-orange-400/10'  },
+    { label: 'Ativos',         value: String(activeCount),                       icon: TrendingUp, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+    { label: 'MRR Total',      value: `R$ ${mrrTotal.toLocaleString('pt-BR')}`,  icon: DollarSign, color: 'text-amber-400',  bg: 'bg-amber-400/10'   },
+    { label: 'Ticket Médio',   value: `R$ ${Math.round(ticket).toLocaleString('pt-BR')}`, icon: BarChart3, color: 'text-sky-400', bg: 'bg-sky-400/10' },
   ]
 
   return (
@@ -657,17 +720,21 @@ export default function ClientesPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
-                        <AtSign size={11} /> {client.instagram}
+                        {client.instagram && <><AtSign size={11} /> {client.instagram}</>}
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
-                        <Avatar className="w-6 h-6">
-                          <AvatarFallback className="text-[10px] bg-primary/20 text-primary font-semibold">
-                            {client.assigneeInitials}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">{client.assignee}</span>
+                        {client.assignee && (
+                          <>
+                            <Avatar className="w-6 h-6">
+                              <AvatarFallback className="text-[10px] bg-primary/20 text-primary font-semibold">
+                                {client.assigneeInitials || client.assignee[0]?.toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">{client.assignee}</span>
+                          </>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3">
