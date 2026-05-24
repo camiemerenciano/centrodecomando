@@ -37,6 +37,7 @@ interface Client {
   assigneeInitials: string
   tasks: number
   notes: string
+  servicos: string[]
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ function toRow(c: Client, userId: string) {
     assignee_initials: c.assigneeInitials,
     tasks: c.tasks,
     notes: c.notes,
+    servicos: c.servicos,
   }
 }
 
@@ -103,6 +105,7 @@ function fromRow(r: any): Client {
     assigneeInitials: r.assignee_initials ?? '',
     tasks: r.tasks ?? 0,
     notes: r.notes ?? '',
+    servicos: Array.isArray(r.servicos) ? r.servicos : [],
   }
 }
 
@@ -125,11 +128,13 @@ function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label:
 
 function ClientPanel({
   client,
+  areas,
   onClose,
   onSave,
   onDelete,
 }: {
   client: Client
+  areas: string[]
   onClose: () => void
   onSave: (c: Client) => void
   onDelete: (id: string) => void
@@ -293,6 +298,19 @@ function ClientPanel({
                 </section>
               )}
 
+              {form.servicos.length > 0 && (
+                <section className="space-y-2.5">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Serviços</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {form.servicos.map(s => (
+                      <span key={s} className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-primary/15 text-primary border border-primary/25">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {/* Acesso ao Portal */}
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Acesso ao Portal</p>
@@ -407,6 +425,34 @@ function ClientPanel({
                   className="w-full resize-none rounded-lg bg-muted border border-border px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                 />
               </section>
+
+              {areas.length > 0 && (
+                <section className="space-y-2.5">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Serviços</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {areas.map(area => {
+                      const on = form.servicos.includes(area)
+                      return (
+                        <button
+                          key={area}
+                          type="button"
+                          onClick={() => setForm(p => ({
+                            ...p,
+                            servicos: on ? p.servicos.filter(s => s !== area) : [...p.servicos, area],
+                          }))}
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
+                            on
+                              ? 'bg-primary/15 text-primary border-primary/40'
+                              : 'bg-muted text-muted-foreground border-border hover:border-primary/30 hover:text-foreground'
+                          }`}
+                        >
+                          {area}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
             </>
           )}
         </div>
@@ -429,10 +475,10 @@ function ClientPanel({
 
 // ─── NewClientPanel ───────────────────────────────────────────────────────────
 
-function NewClientPanel({ onClose, onCreate }: { onClose: () => void; onCreate: (c: Omit<Client, 'id'>) => void }) {
+function NewClientPanel({ areas, onClose, onCreate }: { areas: string[]; onClose: () => void; onCreate: (c: Omit<Client, 'id'>) => void }) {
   const [form, setForm] = useState<Partial<Client>>({
     status: 'active', plan: 'Starter', mrr: 'R$ 0', since: '',
-    assignee: '', assigneeInitials: '', tasks: 0, notes: '',
+    assignee: '', assigneeInitials: '', tasks: 0, notes: '', servicos: [],
   })
   const [saving, setSaving] = useState(false)
 
@@ -451,7 +497,7 @@ function NewClientPanel({ onClose, onCreate }: { onClose: () => void; onCreate: 
       website: form.website ?? '', address: form.address ?? '', segment: form.segment ?? '',
       status: form.status!, plan: form.plan!, mrr: form.mrr!, since: form.since ?? '',
       assignee: form.assignee ?? '', assigneeInitials: form.assigneeInitials ?? '',
-      tasks: 0, notes: form.notes ?? '',
+      tasks: 0, notes: form.notes ?? '', servicos: form.servicos ?? [],
     })
     setSaving(false)
   }
@@ -511,6 +557,34 @@ function NewClientPanel({ onClose, onCreate }: { onClose: () => void; onCreate: 
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Notas</p>
             <textarea value={form.notes ?? ''} onChange={f('notes')} rows={3} placeholder="Observações..." className="w-full resize-none rounded-lg bg-muted border border-border px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all" />
           </section>
+
+          {areas.length > 0 && (
+            <section className="space-y-2.5">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Serviços</p>
+              <div className="flex flex-wrap gap-1.5">
+                {areas.map(area => {
+                  const on = (form.servicos ?? []).includes(area)
+                  return (
+                    <button
+                      key={area}
+                      type="button"
+                      onClick={() => setForm(p => ({
+                        ...p,
+                        servicos: on ? (p.servicos ?? []).filter(s => s !== area) : [...(p.servicos ?? []), area],
+                      }))}
+                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
+                        on
+                          ? 'bg-primary/15 text-primary border-primary/40'
+                          : 'bg-muted text-muted-foreground border-border hover:border-primary/30 hover:text-foreground'
+                      }`}
+                    >
+                      {area}
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+          )}
         </div>
         <div className="px-5 py-4 border-t border-border flex items-center justify-between shrink-0">
           <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
@@ -532,6 +606,7 @@ export default function ClientesPage() {
   const [search, setSearch]       = useState('')
   const [filter, setFilter]       = useState<'all' | Status>('all')
   const [userId, setUserId]       = useState<string | null>(null)
+  const [areas, setAreas]         = useState<string[]>([])
 
   const supabase = createClient()
 
@@ -540,6 +615,8 @@ export default function ClientesPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       setUserId(user.id)
+      const saved = user.user_metadata?.areas_de_atuacao
+      if (Array.isArray(saved)) setAreas(saved)
       const { data } = await supabase
         .from('clientes')
         .select('*')
@@ -597,6 +674,7 @@ export default function ClientesPage() {
       assignee_initials: assigneeInitials,
       tasks: data.tasks,
       notes: data.notes,
+      servicos: data.servicos,
     }
     const { data: inserted, error } = await supabase.from('clientes').insert(row).select().single()
     if (error || !inserted) return
@@ -767,6 +845,7 @@ export default function ClientesPage() {
       {selected && (
         <ClientPanel
           client={selected}
+          areas={areas}
           onClose={() => setSelected(null)}
           onSave={handleSave}
           onDelete={handleDelete}
@@ -774,6 +853,7 @@ export default function ClientesPage() {
       )}
       {showNew && (
         <NewClientPanel
+          areas={areas}
           onClose={() => setShowNew(false)}
           onCreate={handleCreate}
         />

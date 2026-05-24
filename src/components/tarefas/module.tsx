@@ -1,19 +1,20 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   Plus, LayoutGrid, List, X, Clock, MessageSquare,
   Circle, PlayCircle, Eye, CheckCircle2, Pencil, Hourglass,
-  Trash2, Flag,
+  Trash2,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type OpStatus   = 'novo' | 'em_andamento' | 'aguardando_cliente' | 'revisao' | 'concluido'
-type Priority   = 'low' | 'medium' | 'high' | 'urgent'
+type OpStatus = 'novo' | 'em_andamento' | 'aguardando_cliente' | 'revisao' | 'concluido'
+type Priority = 'low' | 'medium' | 'high' | 'urgent'
 
 interface OpTask {
   id: string
@@ -37,24 +38,19 @@ const STATUS_ORDER: OpStatus[] = [
 const STATUS_CFG: Record<OpStatus, {
   label: string; color: string; bg: string; border: string; icon: React.ReactNode
 }> = {
-  novo:               { label: 'Novo',              color: 'text-slate-400',   bg: 'bg-slate-400/10',   border: 'border-slate-400/20',   icon: <Circle size={11} />       },
-  em_andamento:       { label: 'Em andamento',       color: 'text-sky-400',     bg: 'bg-sky-400/10',     border: 'border-sky-400/20',     icon: <PlayCircle size={11} />   },
-  aguardando_cliente: { label: 'Aguard. cliente',    color: 'text-amber-400',   bg: 'bg-amber-400/10',   border: 'border-amber-400/20',   icon: <Hourglass size={11} />    },
-  revisao:            { label: 'Revisão',            color: 'text-orange-400',  bg: 'bg-orange-400/10',  border: 'border-orange-400/20',  icon: <Eye size={11} />          },
-  concluido:          { label: 'Concluído',          color: 'text-emerald-400', bg: 'bg-emerald-400/10', border: 'border-emerald-400/20', icon: <CheckCircle2 size={11} /> },
+  novo:               { label: 'Novo',           color: 'text-slate-400',   bg: 'bg-slate-400/10',   border: 'border-slate-400/20',   icon: <Circle size={11} />       },
+  em_andamento:       { label: 'Em andamento',   color: 'text-sky-400',     bg: 'bg-sky-400/10',     border: 'border-sky-400/20',     icon: <PlayCircle size={11} />   },
+  aguardando_cliente: { label: 'Ag. cliente',    color: 'text-amber-400',   bg: 'bg-amber-400/10',   border: 'border-amber-400/20',   icon: <Hourglass size={11} />    },
+  revisao:            { label: 'Revisão',        color: 'text-orange-400',  bg: 'bg-orange-400/10',  border: 'border-orange-400/20',  icon: <Eye size={11} />          },
+  concluido:          { label: 'Concluído',      color: 'text-emerald-400', bg: 'bg-emerald-400/10', border: 'border-emerald-400/20', icon: <CheckCircle2 size={11} /> },
 }
 
 const PRIORITY_CFG: Record<Priority, { label: string; color: string; dot: string }> = {
-  urgent: { label: 'Urgente', color: 'bg-red-500/15 text-red-400',         dot: 'bg-red-400'     },
-  high:   { label: 'Alta',    color: 'bg-orange-500/15 text-orange-400',   dot: 'bg-orange-400'  },
-  medium: { label: 'Média',   color: 'bg-sky-500/15 text-sky-400',         dot: 'bg-sky-400'     },
-  low:    { label: 'Baixa',   color: 'bg-muted text-muted-foreground',     dot: 'bg-muted-foreground' },
+  urgent: { label: 'Urgente', color: 'bg-red-500/15 text-red-400',       dot: 'bg-red-400'          },
+  high:   { label: 'Alta',    color: 'bg-orange-500/15 text-orange-400', dot: 'bg-orange-400'       },
+  medium: { label: 'Média',   color: 'bg-sky-500/15 text-sky-400',       dot: 'bg-sky-400'          },
+  low:    { label: 'Baixa',   color: 'bg-muted text-muted-foreground',   dot: 'bg-muted-foreground' },
 }
-
-const CLIENTS:   string[]                          = []
-const ASSIGNEES: { name: string; initials: string }[] = []
-
-const INITIAL_TASKS: OpTask[] = []
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -68,39 +64,48 @@ function isOverdue(d: string) {
   return !!d && new Date(d) < new Date(new Date().toDateString())
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fromRow(r: any): OpTask {
+  return {
+    id:                 r.id,
+    title:              r.title ?? '',
+    description:        r.description ?? '',
+    client:             r.client ?? '',
+    assignee:           r.assignee ?? '',
+    assigneeInitials:   r.assignee_initials ?? '',
+    dueDate:            r.due_date ?? '',
+    priority:           (r.priority ?? 'medium') as Priority,
+    status:             (r.status ?? 'novo') as OpStatus,
+    conversationOrigin: r.conversation_origin ?? null,
+  }
+}
+
 // ─── TaskCard ─────────────────────────────────────────────────────────────────
 
 function TaskCard({
-  task,
-  onEdit,
-  onDelete,
+  task, onEdit, onDelete,
 }: {
   task: OpTask
   onEdit: (t: OpTask) => void
   onDelete: (id: string) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const pCfg  = PRIORITY_CFG[task.priority]
+  const pCfg   = PRIORITY_CFG[task.priority]
   const overdue = isOverdue(task.dueDate)
 
   return (
     <div
       draggable
-      onDragStart={e => {
-        e.dataTransfer.setData('taskId', task.id)
-        e.dataTransfer.effectAllowed = 'move'
-      }}
+      onDragStart={e => { e.dataTransfer.setData('taskId', task.id); e.dataTransfer.effectAllowed = 'move' }}
       className="relative bg-card border border-border rounded-xl p-3.5 space-y-2.5 hover:border-primary/30 cursor-grab active:cursor-grabbing transition-all hover:shadow-md hover:shadow-primary/5 group"
       onClick={() => onEdit(task)}
     >
-      {/* Priority dot */}
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium text-foreground leading-snug group-hover:text-primary/90 transition-colors line-clamp-2 flex-1">
           {task.title}
         </p>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${pCfg.dot}`} />
-          {/* Menu button */}
           <button
             onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }}
             className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
@@ -112,7 +117,7 @@ function TaskCard({
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">{task.client}</p>
+      {task.client && <p className="text-xs text-muted-foreground">{task.client}</p>}
 
       {task.conversationOrigin && (
         <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
@@ -127,31 +132,23 @@ function TaskCard({
           {fmtDate(task.dueDate)}
           {overdue && ' · atrasada'}
         </span>
-        <Avatar className="w-5 h-5">
-          <AvatarFallback className="text-[9px] bg-primary/20 text-primary font-semibold">
-            {task.assigneeInitials}
-          </AvatarFallback>
-        </Avatar>
+        {task.assigneeInitials && (
+          <Avatar className="w-5 h-5">
+            <AvatarFallback className="text-[9px] bg-primary/20 text-primary font-semibold">
+              {task.assigneeInitials}
+            </AvatarFallback>
+          </Avatar>
+        )}
       </div>
 
-      {/* Inline dropdown menu */}
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-10" onClick={e => { e.stopPropagation(); setMenuOpen(false) }} />
-          <div
-            className="absolute right-2 top-8 z-20 bg-popover border border-border rounded-lg shadow-lg py-1 min-w-[140px]"
-            onClick={e => e.stopPropagation()}
-          >
-            <button
-              onClick={() => { setMenuOpen(false); onEdit(task) }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-foreground hover:bg-muted transition-colors"
-            >
+          <div className="absolute right-2 top-8 z-20 bg-popover border border-border rounded-lg shadow-lg py-1 min-w-[140px]" onClick={e => e.stopPropagation()}>
+            <button onClick={() => { setMenuOpen(false); onEdit(task) }} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-foreground hover:bg-muted transition-colors">
               <Pencil size={11} /> Editar
             </button>
-            <button
-              onClick={() => { setMenuOpen(false); onDelete(task.id) }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-destructive hover:bg-destructive/10 transition-colors"
-            >
+            <button onClick={() => { setMenuOpen(false); onDelete(task.id) }} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-destructive hover:bg-destructive/10 transition-colors">
               <Trash2 size={11} /> Excluir
             </button>
           </div>
@@ -164,9 +161,7 @@ function TaskCard({
 // ─── TaskFormPanel ────────────────────────────────────────────────────────────
 
 function TaskFormPanel({
-  task,
-  onSave,
-  onClose,
+  task, onSave, onClose,
 }: {
   task: Partial<OpTask> | null
   onSave: (t: OpTask) => void
@@ -174,23 +169,16 @@ function TaskFormPanel({
 }) {
   const isEdit = !!task?.id
   const [form, setForm] = useState<Partial<OpTask>>({
-    title: '',
-    description: '',
-    client: CLIENTS[0],
-    assignee: ASSIGNEES[0].name,
-    assigneeInitials: ASSIGNEES[0].initials,
-    dueDate: '',
-    priority: 'medium',
-    status: 'novo',
-    conversationOrigin: null,
+    title: '', description: '', client: '', assignee: '', assigneeInitials: '',
+    dueDate: '', priority: 'medium', status: 'novo', conversationOrigin: null,
     ...task,
   })
 
   function field<K extends keyof OpTask>(key: K) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       if (key === 'assignee') {
-        const a = ASSIGNEES.find(x => x.name === e.target.value)
-        setForm(p => ({ ...p, assignee: e.target.value, assigneeInitials: a?.initials ?? '' }))
+        const initials = e.target.value.split(' ').slice(0, 2).map(n => n[0] ?? '').join('').toUpperCase()
+        setForm(p => ({ ...p, assignee: e.target.value, assigneeInitials: initials }))
       } else {
         setForm(p => ({ ...p, [key]: e.target.value }))
       }
@@ -200,16 +188,16 @@ function TaskFormPanel({
   function save() {
     if (!form.title?.trim()) return
     onSave({
-      id:                  task?.id ?? `task-${Date.now()}`,
-      title:               form.title!.trim(),
-      description:         form.description ?? '',
-      client:              form.client!,
-      assignee:            form.assignee!,
-      assigneeInitials:    form.assigneeInitials!,
-      dueDate:             form.dueDate ?? '',
-      priority:            form.priority!,
-      status:              form.status!,
-      conversationOrigin:  form.conversationOrigin?.trim() || null,
+      id:                 task?.id ?? `task-${Date.now()}`,
+      title:              form.title!.trim(),
+      description:        form.description ?? '',
+      client:             form.client ?? '',
+      assignee:           form.assignee ?? '',
+      assigneeInitials:   form.assigneeInitials ?? '',
+      dueDate:            form.dueDate ?? '',
+      priority:           form.priority!,
+      status:             form.status!,
+      conversationOrigin: form.conversationOrigin?.trim() || null,
     })
   }
 
@@ -220,66 +208,36 @@ function TaskFormPanel({
     <>
       <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
       <div className="fixed right-0 top-0 h-full w-[440px] bg-card border-l border-border z-50 flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
-
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <div>
-            <h2 className="text-sm font-semibold text-foreground">
-              {isEdit ? 'Editar tarefa' : 'Nova tarefa'}
-            </h2>
-            {isEdit && (
-              <p className="text-[10px] text-muted-foreground mt-0.5">ID #{task?.id}</p>
-            )}
+            <h2 className="text-sm font-semibold text-foreground">{isEdit ? 'Editar tarefa' : 'Nova tarefa'}</h2>
+            {isEdit && <p className="text-[10px] text-muted-foreground mt-0.5">ID #{task?.id}</p>}
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
-            <X size={16} />
-          </button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X size={16} /></button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
-
-          {/* Title */}
           <div>
             <label className={lbl}>Título <span className="text-destructive">*</span></label>
-            <input
-              value={form.title ?? ''}
-              onChange={field('title')}
-              placeholder="Ex: Criar artes para campanha de junho"
-              className={inp + ' h-9'}
-              autoFocus
-            />
+            <input value={form.title ?? ''} onChange={field('title')} placeholder="Ex: Criar artes para campanha de junho" className={inp + ' h-9'} autoFocus />
           </div>
 
-          {/* Description */}
           <div>
             <label className={lbl}>Descrição</label>
-            <textarea
-              value={form.description ?? ''}
-              onChange={field('description')}
-              placeholder="Detalhes, contexto ou critérios de aceite..."
-              rows={3}
-              className="w-full resize-none rounded-lg bg-muted border border-border px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-            />
+            <textarea value={form.description ?? ''} onChange={field('description')} placeholder="Detalhes, contexto ou critérios de aceite..." rows={3} className="w-full resize-none rounded-lg bg-muted border border-border px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all" />
           </div>
 
-          {/* Client + Assignee */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Cliente</label>
-              <select value={form.client} onChange={field('client')} className={inp + ' cursor-pointer'}>
-                {CLIENTS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <input value={form.client ?? ''} onChange={field('client')} placeholder="Nome do cliente" className={inp} />
             </div>
             <div>
               <label className={lbl}>Responsável</label>
-              <select value={form.assignee} onChange={field('assignee')} className={inp + ' cursor-pointer'}>
-                {ASSIGNEES.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
-              </select>
+              <input value={form.assignee ?? ''} onChange={field('assignee')} placeholder="Nome do responsável" className={inp} />
             </div>
           </div>
 
-          {/* Due date + Priority */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Prazo</label>
@@ -296,45 +254,23 @@ function TaskFormPanel({
             </div>
           </div>
 
-          {/* Status */}
           <div>
             <label className={lbl}>Status</label>
             <select value={form.status} onChange={field('status')} className={inp + ' cursor-pointer'}>
-              {STATUS_ORDER.map(s => (
-                <option key={s} value={s}>{STATUS_CFG[s].label}</option>
-              ))}
+              {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
             </select>
           </div>
 
-          {/* Conversation origin */}
           <div>
             <label className={lbl}>Origem da conversa</label>
-            <input
-              value={form.conversationOrigin ?? ''}
-              onChange={e => setForm(p => ({ ...p, conversationOrigin: e.target.value || null }))}
-              placeholder="Ex: Ana Beatriz – Loja Bloom"
-              className={inp}
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">
-              Deixe em branco se a tarefa não veio de uma conversa.
-            </p>
+            <input value={form.conversationOrigin ?? ''} onChange={e => setForm(p => ({ ...p, conversationOrigin: e.target.value || null }))} placeholder="Ex: Ana Beatriz – Loja Bloom" className={inp} />
+            <p className="text-[10px] text-muted-foreground mt-1">Deixe em branco se a tarefa não veio de uma conversa.</p>
           </div>
         </div>
 
-        {/* Footer */}
         <div className="px-5 py-4 border-t border-border flex items-center justify-between shrink-0">
-          <button
-            onClick={onClose}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Cancelar
-          </button>
-          <Button
-            size="sm"
-            onClick={save}
-            disabled={!form.title?.trim()}
-            className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5"
-          >
+          <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
+          <Button size="sm" onClick={save} disabled={!form.title?.trim()} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
             {isEdit ? <><Pencil size={12} /> Salvar alterações</> : <><Plus size={12} /> Criar tarefa</>}
           </Button>
         </div>
@@ -346,20 +282,34 @@ function TaskFormPanel({
 // ─── Main module ──────────────────────────────────────────────────────────────
 
 export function TarefasModule() {
-  const [tasks, setTasks]               = useState(INITIAL_TASKS)
+  const [tasks, setTasks]               = useState<OpTask[]>([])
   const [dragOver, setDragOver]         = useState<OpStatus | null>(null)
   const [view, setView]                 = useState<'kanban' | 'list'>('kanban')
   const [filterStatus, setFilterStatus] = useState<OpStatus | 'all'>('all')
-  const [filterClient, setFilterClient] = useState('all')
-  const [filterAssignee, setFilterAssignee] = useState('all')
   const [filterDue, setFilterDue]       = useState('all')
   const [showForm, setShowForm]         = useState(false)
   const [editTask, setEditTask]         = useState<Partial<OpTask> | null>(null)
+  const [userId, setUserId]             = useState<string | null>(null)
+  const supabase = createClient()
+
+  useEffect(() => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      setUserId(user.id)
+      const { data } = await supabase
+        .from('tarefas')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+      if (data) setTasks(data.map(fromRow))
+    }
+    load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const filtered = useMemo(() => tasks.filter(t => {
     if (filterStatus !== 'all' && t.status !== filterStatus) return false
-    if (filterClient !== 'all' && t.client !== filterClient) return false
-    if (filterAssignee !== 'all' && t.assignee !== filterAssignee) return false
     if (filterDue !== 'all') {
       const today = new Date(new Date().toDateString())
       const due   = new Date(t.dueDate)
@@ -374,7 +324,7 @@ export function TarefasModule() {
       }
     }
     return true
-  }), [tasks, filterStatus, filterClient, filterAssignee, filterDue])
+  }), [tasks, filterStatus, filterDue])
 
   function openCreate(status?: OpStatus) {
     setEditTask(status ? { status } : { status: 'novo' })
@@ -386,21 +336,43 @@ export function TarefasModule() {
     setShowForm(true)
   }
 
-  function handleSave(task: OpTask) {
-    setTasks(prev => prev.some(t => t.id === task.id)
-      ? prev.map(t => t.id === task.id ? task : t)
-      : [...prev, task]
-    )
+  async function handleSave(task: OpTask) {
+    if (!userId) return
+    const row = {
+      user_id:            userId,
+      title:              task.title,
+      description:        task.description,
+      client:             task.client,
+      assignee:           task.assignee,
+      assignee_initials:  task.assigneeInitials,
+      due_date:           task.dueDate,
+      priority:           task.priority,
+      status:             task.status,
+      conversation_origin: task.conversationOrigin,
+    }
+    const isNew = !tasks.some(t => t.id === task.id)
+    if (isNew) {
+      const { data } = await supabase.from('tarefas').insert(row).select().single()
+      if (data) setTasks(prev => [...prev, fromRow(data)])
+    } else {
+      await supabase.from('tarefas').update(row).eq('id', task.id)
+      setTasks(prev => prev.map(t => t.id === task.id ? task : t))
+    }
     setShowForm(false)
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
+    await supabase.from('tarefas').delete().eq('id', id)
     setTasks(prev => prev.filter(t => t.id !== id))
   }
 
-  const sel = 'h-8 rounded-lg bg-muted border border-border px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer transition-all'
+  async function moveTask(id: string, status: OpStatus) {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t))
+    await supabase.from('tarefas').update({ status }).eq('id', id)
+  }
 
-  const activeFilters = [filterStatus, filterClient, filterAssignee, filterDue].filter(f => f !== 'all').length
+  const sel = 'h-8 rounded-lg bg-muted border border-border px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer transition-all'
+  const activeFilters = [filterStatus, filterDue].filter(f => f !== 'all').length
 
   return (
     <div className="space-y-4 max-w-[1440px]">
@@ -413,16 +385,6 @@ export function TarefasModule() {
             {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
           </select>
 
-          <select value={filterClient} onChange={e => setFilterClient(e.target.value)} className={sel}>
-            <option value="all">Todos os clientes</option>
-            {CLIENTS.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-
-          <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} className={sel}>
-            <option value="all">Todos os responsáveis</option>
-            {ASSIGNEES.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
-          </select>
-
           <select value={filterDue} onChange={e => setFilterDue(e.target.value)} className={sel}>
             <option value="all">Qualquer prazo</option>
             <option value="overdue">Atrasadas</option>
@@ -432,7 +394,7 @@ export function TarefasModule() {
 
           {activeFilters > 0 && (
             <button
-              onClick={() => { setFilterStatus('all'); setFilterClient('all'); setFilterAssignee('all'); setFilterDue('all') }}
+              onClick={() => { setFilterStatus('all'); setFilterDue('all') }}
               className="flex items-center gap-1 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted border border-border transition-all"
             >
               <X size={11} /> Limpar ({activeFilters})
@@ -441,24 +403,14 @@ export function TarefasModule() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* View toggle */}
           <div className="flex items-center bg-muted rounded-lg p-0.5 border border-border">
-            <button
-              onClick={() => setView('kanban')}
-              className={`w-7 h-7 flex items-center justify-center rounded transition-all ${view === 'kanban' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Visão Kanban"
-            >
+            <button onClick={() => setView('kanban')} className={`w-7 h-7 flex items-center justify-center rounded transition-all ${view === 'kanban' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} title="Kanban">
               <LayoutGrid size={13} />
             </button>
-            <button
-              onClick={() => setView('list')}
-              className={`w-7 h-7 flex items-center justify-center rounded transition-all ${view === 'list' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Visão Lista"
-            >
+            <button onClick={() => setView('list')} className={`w-7 h-7 flex items-center justify-center rounded transition-all ${view === 'list' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} title="Lista">
               <List size={13} />
             </button>
           </div>
-
           <Button size="sm" onClick={() => openCreate()} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
             <Plus size={13} /> Nova tarefa
           </Button>
@@ -469,54 +421,38 @@ export function TarefasModule() {
       {view === 'kanban' && (
         <div className="grid grid-cols-5 gap-3 min-h-[60vh]">
           {STATUS_ORDER.map(status => {
-            const col  = filtered.filter(t => t.status === status)
-            const cfg  = STATUS_CFG[status]
+            const col = filtered.filter(t => t.status === status)
+            const cfg = STATUS_CFG[status]
             const isOver = dragOver === status
             return (
               <div
                 key={status}
                 className={`flex flex-col gap-2 rounded-xl p-1 -m-1 transition-colors ${isOver ? 'bg-primary/8 ring-1 ring-primary/25' : ''}`}
                 onDragOver={e => { e.preventDefault(); setDragOver(status) }}
-                onDragLeave={e => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null)
-                }}
+                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null) }}
                 onDrop={e => {
                   e.preventDefault()
                   const id = e.dataTransfer.getData('taskId')
-                  if (id) setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t))
+                  if (id) moveTask(id, status)
                   setDragOver(null)
                 }}
               >
-                {/* Column header */}
                 <div className="flex items-center justify-between px-1 py-0.5">
                   <div className={`flex items-center gap-1.5 text-xs font-semibold ${cfg.color}`}>
                     {cfg.icon}
                     <span>{cfg.label}</span>
                     <span className="text-[10px] text-muted-foreground font-normal">({col.length})</span>
                   </div>
-                  <button
-                    onClick={() => openCreate(status)}
-                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                    title={`Nova tarefa em ${cfg.label}`}
-                  >
+                  <button onClick={() => openCreate(status)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title={`Nova tarefa em ${cfg.label}`}>
                     <Plus size={12} />
                   </button>
                 </div>
 
-                {/* Cards */}
                 <div className="flex flex-col gap-2">
                   {col.map(task => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      onEdit={openEdit}
-                      onDelete={handleDelete}
-                    />
+                    <TaskCard key={task.id} task={task} onEdit={openEdit} onDelete={handleDelete} />
                   ))}
-                  <button
-                    onClick={() => openCreate(status)}
-                    className="w-full py-2.5 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all"
-                  >
+                  <button onClick={() => openCreate(status)} className="w-full py-2.5 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all">
                     + Adicionar
                   </button>
                 </div>
@@ -533,9 +469,7 @@ export function TarefasModule() {
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Tarefa', 'Cliente', 'Responsável', 'Prazo', 'Prioridade', 'Status', ''].map(h => (
-                  <th key={h} className="text-left text-[11px] font-semibold text-muted-foreground px-4 py-3 first:pl-5">
-                    {h}
-                  </th>
+                  <th key={h} className="text-left text-[11px] font-semibold text-muted-foreground px-4 py-3 first:pl-5">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -557,11 +491,11 @@ export function TarefasModule() {
                     <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{task.client}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
-                        <Avatar className="w-5 h-5">
-                          <AvatarFallback className="text-[9px] bg-primary/20 text-primary font-semibold">
-                            {task.assigneeInitials}
-                          </AvatarFallback>
-                        </Avatar>
+                        {task.assigneeInitials && (
+                          <Avatar className="w-5 h-5">
+                            <AvatarFallback className="text-[9px] bg-primary/20 text-primary font-semibold">{task.assigneeInitials}</AvatarFallback>
+                          </Avatar>
+                        )}
                         <span className="text-xs text-muted-foreground whitespace-nowrap">{task.assignee}</span>
                       </div>
                     </td>
@@ -571,9 +505,7 @@ export function TarefasModule() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge className={`${pCfg.color} border-0 text-[10px] px-1.5 h-5`}>
-                        {pCfg.label}
-                      </Badge>
+                      <Badge className={`${pCfg.color} border-0 text-[10px] px-1.5 h-5`}>{pCfg.label}</Badge>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 h-5 rounded-full ${stCfg.bg} ${stCfg.color} border ${stCfg.border}`}>
@@ -581,11 +513,7 @@ export function TarefasModule() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => openEdit(task)}
-                        className="opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
-                        title="Editar"
-                      >
+                      <button onClick={() => openEdit(task)} className="opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all" title="Editar">
                         <Pencil size={13} />
                       </button>
                     </td>
@@ -596,12 +524,7 @@ export function TarefasModule() {
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center">
                     <p className="text-sm text-muted-foreground">Nenhuma tarefa encontrada.</p>
-                    <button
-                      onClick={() => openCreate()}
-                      className="mt-2 text-xs text-primary hover:text-primary/80 transition-colors"
-                    >
-                      + Criar nova tarefa
-                    </button>
+                    <button onClick={() => openCreate()} className="mt-2 text-xs text-primary hover:text-primary/80 transition-colors">+ Criar nova tarefa</button>
                   </td>
                 </tr>
               )}
@@ -610,13 +533,8 @@ export function TarefasModule() {
         </div>
       )}
 
-      {/* ── Form panel ── */}
       {showForm && (
-        <TaskFormPanel
-          task={editTask}
-          onSave={handleSave}
-          onClose={() => setShowForm(false)}
-        />
+        <TaskFormPanel task={editTask} onSave={handleSave} onClose={() => setShowForm(false)} />
       )}
     </div>
   )
