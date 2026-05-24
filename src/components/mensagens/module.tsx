@@ -272,9 +272,16 @@ export function MensagensModule() {
       })
       const data = await res.json()
       if (!res.ok || !Array.isArray(data)) return
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
       const mapped = data
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .filter((c: any) => c.lastMessage && (c.remoteJid ?? c?.id?.remote ?? c?.id ?? '').endsWith('@s.whatsapp.net'))
+        .filter((c: any) => {
+          const jid: string = c.remoteJid ?? c?.id?.remote ?? c?.id ?? ''
+          if (!jid.endsWith('@s.whatsapp.net')) return false
+          if (!c.lastMessage) return false
+          const ts = c.updatedAt ? new Date(c.updatedAt).getTime() : 0
+          return ts >= cutoff
+        })
         .map(mapChat)
         .filter((c: ConvItem) => c.id)
       setConversations(mapped)
