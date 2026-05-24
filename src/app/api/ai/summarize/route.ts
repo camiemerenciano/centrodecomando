@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 
 export async function POST(request: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json(
-      { error: 'ANTHROPIC_API_KEY não configurado no .env.local' },
+      { error: 'OPENAI_API_KEY não configurado' },
       { status: 503 }
     )
   }
@@ -15,14 +15,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Nenhuma mensagem fornecida' }, { status: 400 })
   }
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
   const transcript = (messages as { from: string; content: string }[])
     .map(m => `${m.from}: ${m.content}`)
     .join('\n')
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+  const response = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
     max_tokens: 600,
     messages: [
       {
@@ -40,8 +40,7 @@ Seja direto e use no máximo 4 itens.`,
     ],
   })
 
-  const summary =
-    response.content[0].type === 'text' ? response.content[0].text : ''
+  const summary = response.choices[0]?.message?.content ?? ''
 
   return NextResponse.json({ summary })
 }

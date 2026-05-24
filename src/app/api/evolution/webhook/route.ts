@@ -77,6 +77,25 @@ export async function POST(request: NextRequest) {
 
     const { user_id, evo_api_url, evo_api_key } = integration
 
+    // Auto-create pipeline lead if this contact has no existing lead
+    const { data: existingLead } = await admin
+      .from('pipeline_leads')
+      .select('id')
+      .eq('user_id', user_id)
+      .eq('remote_jid', remoteJid)
+      .maybeSingle()
+    if (!existingLead) {
+      const phone = remoteJid.split('@')[0] ?? remoteJid
+      await admin.from('pipeline_leads').insert({
+        user_id,
+        title:      pushName || `+${phone}`,
+        client:     pushName || `+${phone}`,
+        stage:      'recepcao',
+        priority:   'medium',
+        remote_jid: remoteJid,
+      })
+    }
+
     // Check if Lunna is paused for this specific conversation
     const { data: pausa } = await admin
       .from('lunna_pausas')
