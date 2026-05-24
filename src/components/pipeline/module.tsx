@@ -446,21 +446,19 @@ export function PipelineModule() {
   const supabase = createClient()
 
   useEffect(() => {
-    let uid: string | null = null
-
     async function fetchCards() {
-      if (!uid) {
+      const res = await fetch('/api/pipeline/leads')
+      if (!res.ok) return
+      const data = await res.json()
+      if (Array.isArray(data)) setCards(data.map(fromRow))
+
+      // set userId from first card or from auth
+      if (data?.length) {
+        setUserId(data[0].user_id)
+      } else {
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
-        uid = user.id
-        setUserId(user.id)
+        if (user) setUserId(user.id)
       }
-      const { data } = await supabase
-        .from('pipeline_leads')
-        .select('*')
-        .eq('user_id', uid)
-        .order('created_at', { ascending: true })
-      if (data) setCards(data.map(fromRow))
     }
 
     fetchCards()
@@ -536,8 +534,13 @@ export function PipelineModule() {
     }
     const isNew = !cards.some(c => c.id === card.id)
     if (isNew) {
-      const { data } = await supabase.from('pipeline_leads').insert(row).select().single()
-      if (data) {
+      const res = await fetch('/api/pipeline/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(row),
+      })
+      if (res.ok) {
+        const data = await res.json()
         setCards(prev => [...prev, fromRow(data)])
       }
     } else {
