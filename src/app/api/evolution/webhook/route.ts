@@ -70,13 +70,36 @@ export async function POST(request: NextRequest) {
     // Find user by instance name
     const { data: integration } = await admin
       .from('integracoes')
-      .select('user_id, evo_api_url, evo_api_key, gcal_access_token')
+      .select('user_id, evo_api_url, evo_api_key, gcal_access_token, gcal_refresh_token')
       .eq('evo_instance', instanceName)
       .maybeSingle()
 
     if (!integration?.user_id) return NextResponse.json({ ok: true })
 
-    const { user_id, evo_api_url, evo_api_key, gcal_access_token } = integration
+    const { user_id, evo_api_url, evo_api_key, gcal_access_token, gcal_refresh_token } = integration
+
+    // Refresh Google Calendar token if we have a refresh token (access tokens expire in 1h)
+    let gcalToken: string | null = (gcal_access_token as string) ?? null
+    if (gcal_refresh_token) {
+      try {
+        const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id:     process.env.GOOGLE_CLIENT_ID!,
+            client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+            refresh_token: gcal_refresh_token as string,
+            grant_type:    'refresh_token',
+          }),
+        })
+        const refreshData = await refreshRes.json()
+        if (refreshData.access_token) {
+          gcalToken = refreshData.access_token as string
+          await admin.from('integracoes').update({ gcal_access_token: gcalToken })
+            .eq('user_id', user_id)
+        }
+      } catch { /* keep existing token */ }
+    }
 
     // Auto-create pipeline lead if this contact has no existing lead
     const { data: existingLead } = await admin
@@ -164,8 +187,6 @@ export async function POST(request: NextRequest) {
 
     // Generate reply
     if (!process.env.OPENAI_API_KEY) return NextResponse.json({ ok: true })
-
-    const gcalToken = gcal_access_token as string | null | undefined
 
     const calendarTools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       {
