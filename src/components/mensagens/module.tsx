@@ -224,16 +224,17 @@ export function MensagensModule() {
       setUserId(user.id)
       const { data } = await supabase
         .from('integracoes')
-        .select('evo_api_url, evo_api_key, evo_instance, gcal_access_token, gcal_refresh_token')
+        .select('evo_api_url, evo_api_key, evo_instance, evo_connected_at, gcal_access_token, gcal_refresh_token')
         .eq('user_id', user.id)
         .maybeSingle()
 
       // WhatsApp
       if (data?.evo_api_url && data?.evo_api_key && data?.evo_instance) {
         setEvo({ apiUrl: data.evo_api_url, apiKey: data.evo_api_key, instanceName: data.evo_instance })
-        localStorage.setItem('evo_apiUrl',   data.evo_api_url)
-        localStorage.setItem('evo_apiKey',   data.evo_api_key)
-        localStorage.setItem('evo_instance', data.evo_instance)
+        localStorage.setItem('evo_apiUrl',       data.evo_api_url)
+        localStorage.setItem('evo_apiKey',       data.evo_api_key)
+        localStorage.setItem('evo_instance',     data.evo_instance)
+        localStorage.setItem('evo_connectedAt',  data.evo_connected_at ?? '')
       }
 
       // Google Calendar — refresh token if available
@@ -272,15 +273,20 @@ export function MensagensModule() {
       })
       const data = await res.json()
       if (!res.ok || !Array.isArray(data)) return
-      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+      const connectedAt = localStorage.getItem('evo_connectedAt')
+      const connectedTs = connectedAt ? new Date(connectedAt).getTime() : 0
       const mapped = data
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((c: any) => {
           const jid: string = c.remoteJid ?? c?.id?.remote ?? c?.id ?? ''
           if (!jid.endsWith('@s.whatsapp.net')) return false
           if (!c.lastMessage) return false
-          const ts = c.updatedAt ? new Date(c.updatedAt).getTime() : 0
-          return ts >= cutoff
+          // Só mostrar chats com atividade após a conexão atual do WhatsApp
+          if (connectedTs > 0) {
+            const updatedTs = c.updatedAt ? new Date(c.updatedAt).getTime() : 0
+            if (updatedTs < connectedTs) return false
+          }
+          return true
         })
         .map(mapChat)
         .filter((c: ConvItem) => c.id)

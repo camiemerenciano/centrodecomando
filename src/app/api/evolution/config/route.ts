@@ -10,15 +10,16 @@ export async function GET() {
   const admin = createAdminClient()
   const { data } = await admin
     .from('integracoes')
-    .select('evo_api_url, evo_api_key, evo_instance')
+    .select('evo_api_url, evo_api_key, evo_instance, evo_connected_at')
     .eq('user_id', user.id)
     .maybeSingle()
 
   if (!data?.evo_api_url) return NextResponse.json({ error: 'Sem config' }, { status: 404 })
 
   return NextResponse.json({
-    apiUrl:       data.evo_api_url,
-    apiKey:       data.evo_api_key,
-    instanceName: data.evo_instance,
+    apiUrl:        data.evo_api_url,
+    apiKey:        data.evo_api_key,
+    instanceName:  data.evo_instance,
+    connectedAt:   data.evo_connected_at ?? null,
   })
 }

@@ -455,8 +455,9 @@ export function PipelineModule() {
       // Busca config da Evolution
       const cfgRes = await fetch('/api/evolution/config')
       if (!cfgRes.ok) return
-      const { apiUrl, apiKey, instanceName } = await cfgRes.json()
+      const { apiUrl, apiKey, instanceName, connectedAt } = await cfgRes.json()
       if (!apiUrl || !apiKey || !instanceName) return
+      const connectedTs = connectedAt ? new Date(connectedAt).getTime() : 0
 
       // Busca metadata de etapas do banco
       const leadsRes = await fetch('/api/pipeline/leads')
@@ -483,9 +484,9 @@ export function PipelineModule() {
         .map((c: Record<string, unknown>) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const jid: string = (c?.remoteJid ?? (c?.id as any)?.remote ?? c?.id ?? '') as string
-          const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
           const ts = c.updatedAt ? new Date(c.updatedAt as string).getTime() : 0
-          if (!jid || !jid.endsWith('@s.whatsapp.net') || !c.lastMessage || ts < cutoff) return null
+          if (!jid || !jid.endsWith('@s.whatsapp.net') || !c.lastMessage) return null
+          if (connectedTs > 0 && ts < connectedTs) return null
           const phone = jid.split('@')[0]
           const name = (c?.name ?? c?.pushName ?? `+${phone}`) as string
           const meta = metaByJid.get(jid)
