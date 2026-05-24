@@ -188,6 +188,7 @@ export function MensagensModule() {
   const [autoReplying, setAutoReplying]           = useState<Record<string, boolean>>({})
   const [pipelineStageMap, setPipelineStageMap]   = useState<Record<string, string>>({})
   const [clientMap, setClientMap]                 = useState<Record<string, Record<string, unknown> | null>>({})
+  const [allowedJids, setAllowedJids]             = useState<Set<string> | null>(null) // null = not loaded yet
 
   const bottomRef        = useRef<HTMLDivElement>(null)
   const supabase         = createClient()
@@ -253,6 +254,14 @@ export function MensagensModule() {
         } catch { /* fallback to stored token */ }
       }
       if (data?.gcal_access_token) setGcalToken(data.gcal_access_token)
+
+      // Load allowed JIDs: only conversations that came through the webhook
+      const { data: leads } = await supabase
+        .from('pipeline_leads')
+        .select('remote_jid')
+        .eq('user_id', user.id)
+        .not('remote_jid', 'is', null)
+      setAllowedJids(new Set((leads ?? []).map(l => l.remote_jid).filter(Boolean)))
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -625,6 +634,7 @@ export function MensagensModule() {
   }
 
   const filtered = conversations.filter(c => {
+    if (allowedJids !== null && !allowedJids.has(c.id)) return false
     const q = search.toLowerCase()
     return (
       c.name.toLowerCase().includes(q) &&
@@ -779,7 +789,7 @@ export function MensagensModule() {
               </Badge>
               {isLunnaActive && (
                 <Badge className="bg-primary/15 text-primary border-0 text-[10px] flex items-center gap-1 shrink-0">
-                  <Bot size={9} /> lunna
+                  <Bot size={9} /> ia
                 </Badge>
               )}
               <Badge className={`${statusCfg[activeStatus].color} border-0 text-[10px] flex items-center gap-1 shrink-0`}>
