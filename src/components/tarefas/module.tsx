@@ -161,11 +161,13 @@ function TaskCard({
 // ─── TaskFormPanel ────────────────────────────────────────────────────────────
 
 function TaskFormPanel({
-  task, onSave, onClose,
+  task, onSave, onClose, clientNames, memberNames,
 }: {
   task: Partial<OpTask> | null
   onSave: (t: OpTask) => void
   onClose: () => void
+  clientNames: string[]
+  memberNames: string[]
 }) {
   const isEdit = !!task?.id
   const [form, setForm] = useState<Partial<OpTask>>({
@@ -230,11 +232,17 @@ function TaskFormPanel({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Cliente</label>
-              <input value={form.client ?? ''} onChange={field('client')} placeholder="Nome do cliente" className={inp} />
+              <select value={form.client ?? ''} onChange={field('client')} className={inp + ' cursor-pointer'}>
+                <option value="">— Sem cliente —</option>
+                {clientNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
             </div>
             <div>
               <label className={lbl}>Responsável</label>
-              <input value={form.assignee ?? ''} onChange={field('assignee')} placeholder="Nome do responsável" className={inp} />
+              <select value={form.assignee ?? ''} onChange={field('assignee')} className={inp + ' cursor-pointer'}>
+                <option value="">— Sem responsável —</option>
+                {memberNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
             </div>
           </div>
 
@@ -290,6 +298,8 @@ export function TarefasModule() {
   const [showForm, setShowForm]         = useState(false)
   const [editTask, setEditTask]         = useState<Partial<OpTask> | null>(null)
   const [userId, setUserId]             = useState<string | null>(null)
+  const [clientNames, setClientNames]   = useState<string[]>([])
+  const [memberNames, setMemberNames]   = useState<string[]>([])
   const supabase = createClient()
 
   useEffect(() => {
@@ -297,12 +307,18 @@ export function TarefasModule() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       setUserId(user.id)
-      const { data } = await supabase
-        .from('tarefas')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true })
-      if (data) setTasks(data.map(fromRow))
+
+      const [{ data: tarefasData }, { data: clientesData }] = await Promise.all([
+        supabase.from('tarefas').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
+        supabase.from('clientes').select('name').eq('user_id', user.id).order('name'),
+      ])
+
+      if (tarefasData) setTasks(tarefasData.map(fromRow))
+      if (clientesData) setClientNames(clientesData.map((c: { name: string }) => c.name).filter(Boolean))
+
+      // Team members: current user + any future org members
+      const fullName = user.user_metadata?.full_name as string | undefined
+      if (fullName) setMemberNames([fullName])
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -534,7 +550,13 @@ export function TarefasModule() {
       )}
 
       {showForm && (
-        <TaskFormPanel task={editTask} onSave={handleSave} onClose={() => setShowForm(false)} />
+        <TaskFormPanel
+          task={editTask}
+          onSave={handleSave}
+          onClose={() => setShowForm(false)}
+          clientNames={clientNames}
+          memberNames={memberNames}
+        />
       )}
     </div>
   )
