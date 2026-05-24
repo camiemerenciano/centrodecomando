@@ -119,6 +119,24 @@ const statusCfg: Record<ConvStatus, { label: string; color: string; dot: string;
   resolved:    { label: 'Resolvida',    color: 'bg-emerald-500/15 text-emerald-400', dot: 'bg-emerald-400', icon: <CheckCircle2 size={9} /> },
 }
 
+type PipelineStage = 'recepcao' | 'viabilidade' | 'ag_agendamento' | 'agendado' | 'contrato_enviado' | 'contrato_assinado' | 'followup' | 'perdido'
+
+const PIPELINE_STAGES: { id: PipelineStage; label: string; badge: string }[] = [
+  { id: 'recepcao',          label: 'Recepção',          badge: 'bg-slate-400/15 text-slate-400 border-slate-400/20'       },
+  { id: 'viabilidade',       label: 'Viabilidade',       badge: 'bg-indigo-400/15 text-indigo-400 border-indigo-400/20'   },
+  { id: 'ag_agendamento',    label: 'Ag. Agendamento',   badge: 'bg-amber-400/15 text-amber-400 border-amber-400/20'      },
+  { id: 'agendado',          label: 'Agendado',          badge: 'bg-sky-400/15 text-sky-400 border-sky-400/20'            },
+  { id: 'contrato_enviado',  label: 'Contrato Enviado',  badge: 'bg-orange-400/15 text-orange-400 border-orange-400/20'   },
+  { id: 'contrato_assinado', label: 'Contrato Assinado', badge: 'bg-emerald-400/15 text-emerald-400 border-emerald-400/20'},
+  { id: 'followup',          label: 'Follow-up',         badge: 'bg-violet-400/15 text-violet-400 border-violet-400/20'   },
+  { id: 'perdido',           label: 'Lead Perdido',      badge: 'bg-red-400/15 text-red-400 border-red-400/20'            },
+]
+
+function pipelineBadge(stage: string | undefined) {
+  if (!stage) return null
+  return PIPELINE_STAGES.find(s => s.id === stage) ?? null
+}
+
 // ─── Not connected banner ─────────────────────────────────────────────────────
 
 function NotConnected() {
@@ -168,6 +186,8 @@ export function MensagensModule() {
   const [userId, setUserId]                       = useState<string | null>(null)
   const [lunnaActiveMap, setLunnaActiveMap]       = useState<Record<string, boolean>>({})
   const [autoReplying, setAutoReplying]           = useState<Record<string, boolean>>({})
+  const [pipelineStageMap, setPipelineStageMap]   = useState<Record<string, string>>({})
+  const [clientMap, setClientMap]                 = useState<Record<string, Record<string, unknown> | null>>({})
 
   const bottomRef        = useRef<HTMLDivElement>(null)
   const supabase         = createClient()
@@ -421,6 +441,68 @@ export function MensagensModule() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations.length])
 
+  // Load pipeline stages for all conversations
+  useEffect(() => {
+    if (!userId || conversations.length === 0) return
+    const jids = conversations.map(c => c.id).filter(Boolean)
+    supabase
+      .from('pipeline_leads')
+      .select('remote_jid, stage')
+      .eq('user_id', userId)
+      .in('remote_jid', jids)
+      .then(({ data }) => {
+        if (!data) return
+        const map: Record<string, string> = {}
+        for (const row of data) { if (row.remote_jid) map[row.remote_jid] = row.stage }
+        setPipelineStageMap(map)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations.length, userId])
+
+  async function changePipelineStage(stage: PipelineStage) {
+    if (!activeId || !userId) return
+    setPipelineStageMap(prev => ({ ...prev, [activeId]: stage }))
+    const { data: existing } = await supabase
+      .from('pipeline_leads')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('remote_jid', activeId)
+      .maybeSingle()
+    if (existing) {
+      await supabase.from('pipeline_leads').update({ stage }).eq('id', existing.id)
+    } else {
+      const phone = activeId.split('@')[0] ?? activeId
+      const name  = activeConv?.name ?? `+${phone}`
+      await supabase.from('pipeline_leads').insert({
+        user_id: userId, title: name, client: name,
+        stage, priority: 'medium', remote_jid: activeId,
+      })
+    }
+  }
+
+  // Fetch client data for active conversation by phone match
+  useEffect(() => {
+    if (!activeId || !userId) return
+    if (clientMap[activeId] !== undefined) return // already cached
+    const phone = activeId.split('@')[0] ?? ''
+    const digits = phone.replace(/\D/g, '')
+    const short  = digits.slice(-9) // last 9 digits for flexible matching
+
+    supabase
+      .from('clientes')
+      .select('*')
+      .eq('user_id', userId)
+      .then(({ data }) => {
+        if (!data) { setClientMap(p => ({ ...p, [activeId]: null })); return }
+        const found = data.find(c => {
+          const cd = (c.phone ?? '').replace(/\D/g, '')
+          return cd.endsWith(short) || digits.endsWith(cd.slice(-9))
+        }) ?? null
+        setClientMap(p => ({ ...p, [activeId]: found }))
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, userId])
+
   // ── Actions ──────────────────────────────────────────────────────────────
 
   function selectConversation(id: string) {
@@ -655,6 +737,11 @@ export function MensagensModule() {
                       </span>
                     )}
                   </div>
+                  {pipelineBadge(pipelineStageMap[conv.id]) && (
+                    <span className={`mt-1 inline-flex text-[9px] font-medium px-1.5 py-0.5 rounded-full border ${pipelineBadge(pipelineStageMap[conv.id])!.badge}`}>
+                      {pipelineBadge(pipelineStageMap[conv.id])!.label}
+                    </span>
+                  )}
                 </div>
               </button>
             )
@@ -877,6 +964,31 @@ export function MensagensModule() {
           </div>
         </div>
 
+        {/* Pipeline stage */}
+        <div className="p-3 border-b border-border">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Etapa do Pipeline</p>
+          <div className="flex flex-col gap-1">
+            {PIPELINE_STAGES.map(s => {
+              const active = activeId ? pipelineStageMap[activeId] === s.id : false
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => changePipelineStage(s.id)}
+                  disabled={!activeConv}
+                  className={`flex items-center gap-2 h-7 px-2.5 rounded-lg text-xs font-medium transition-all disabled:opacity-40 ${
+                    active
+                      ? s.badge + ' ring-1 ring-inset ring-current/20'
+                      : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-current' : 'bg-muted-foreground/40'}`} />
+                  {s.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         {/* Internal notes */}
         <div className="p-3 border-b border-border">
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Anotações internas</p>
@@ -926,6 +1038,109 @@ export function MensagensModule() {
               : <><Wand2 size={12} /> Resumir conversa</>}
           </button>
         </div>
+
+        {/* Client data */}
+        {(() => {
+          const raw = activeId ? clientMap[activeId] : undefined
+          if (!activeId || raw === undefined) return null
+          const cl = raw as Record<string, string | string[]> | null
+          if (cl === null) return (
+            <div className="p-3 border-b border-border">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Dados do Cliente</p>
+              <p className="text-[11px] text-muted-foreground">Nenhum cliente cadastrado com este número.</p>
+            </div>
+          )
+          const statusCls: Record<string, string> = {
+            active:  'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
+            paused:  'bg-amber-500/15 text-amber-400 border-amber-500/20',
+            churned: 'bg-red-500/15 text-red-400 border-red-500/20',
+          }
+          const statusLbl: Record<string, string> = { active: 'Ativo', paused: 'Pausado', churned: 'Churned' }
+          const servicos = Array.isArray(cl.servicos) ? cl.servicos as string[] : []
+          return (
+            <div className="p-3 border-b border-border space-y-2.5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Dados do Cliente</p>
+
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                  <span className="text-[10px] font-bold text-primary">
+                    {String(cl.name ?? '').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground truncate">{String(cl.name ?? '')}</p>
+                  {cl.company && <p className="text-[10px] text-muted-foreground truncate">{String(cl.company)}</p>}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1">
+                {cl.status && (
+                  <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full border ${statusCls[cl.status as string] ?? 'bg-muted text-muted-foreground border-border'}`}>
+                    {statusLbl[cl.status as string] ?? String(cl.status)}
+                  </span>
+                )}
+                {cl.plan && (
+                  <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border bg-muted text-muted-foreground border-border">
+                    {String(cl.plan)}
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                {cl.mrr && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground">MRR</span>
+                    <span className="text-[10px] font-semibold text-foreground">{String(cl.mrr)}</span>
+                  </div>
+                )}
+                {cl.since && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground">Cliente desde</span>
+                    <span className="text-[10px] text-foreground">{String(cl.since)}</span>
+                  </div>
+                )}
+                {cl.segment && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground">Segmento</span>
+                    <span className="text-[10px] text-foreground truncate max-w-[120px] text-right">{String(cl.segment)}</span>
+                  </div>
+                )}
+                {cl.email && (
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] text-muted-foreground shrink-0">Email</span>
+                    <span className="text-[10px] text-foreground truncate">{String(cl.email)}</span>
+                  </div>
+                )}
+                {cl.instagram && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground">Instagram</span>
+                    <span className="text-[10px] text-foreground">{String(cl.instagram)}</span>
+                  </div>
+                )}
+              </div>
+
+              {servicos.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-muted-foreground mb-1">Serviços</p>
+                  <div className="flex flex-wrap gap-1">
+                    {servicos.map((s: string) => (
+                      <span key={s} className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border bg-primary/10 text-primary border-primary/20">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {cl.notes && (
+                <div>
+                  <p className="text-[10px] text-muted-foreground mb-1">Notas</p>
+                  <p className="text-[10px] text-foreground leading-relaxed line-clamp-3">{String(cl.notes)}</p>
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Convert to task */}
         <div className="p-3">

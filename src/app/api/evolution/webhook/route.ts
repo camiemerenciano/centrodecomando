@@ -11,10 +11,11 @@ interface AiConfig {
   emojis_permitidos: string[]; emojis_proibidos: string[]; exemplos: string[]
 }
 
-function buildSystemPrompt(c: AiConfig): string {
+function buildSystemPrompt(c: AiConfig, areas: string[]): string {
   const parts: string[] = []
   parts.push(`você é ${c.nome}${c.cargo ? `, ${c.cargo}` : ''}${c.agencia ? ` da ${c.agencia}` : ''}.`)
   if (c.missao)            parts.push(`\nmissão: ${c.missao}`)
+  if (areas.length)        parts.push(`\nserviços que a agência oferece (SOMENTE ofereça estes, nunca mencione outros): ${areas.join(', ')}`)
   if (c.regras.length)     parts.push(`\nregras obrigatórias:\n${c.regras.map(r => `- ${r}`).join('\n')}`)
   if (c.proibicoes.length) parts.push(`\nproibido:\n${c.proibicoes.map(p => `- ${p}`).join('\n')}`)
   if (c.tom_de_voz.length) parts.push(`\ntom: ${c.tom_de_voz.join(', ')}`)
@@ -150,14 +151,16 @@ export async function POST(request: NextRequest) {
       history.push({ from: pushName, content: text })
     }
 
-    // Fetch AI config
+    // Fetch AI config + areas de atuação
     let systemPrompt = FALLBACK_PROMPT
-    const { data: aiConfig } = await admin
-      .from('ai_config')
-      .select('*')
-      .eq('user_id', user_id)
-      .maybeSingle()
-    if (aiConfig) systemPrompt = buildSystemPrompt(aiConfig as AiConfig)
+    const [{ data: aiConfig }, { data: { user: authUser } }] = await Promise.all([
+      admin.from('ai_config').select('*').eq('user_id', user_id).maybeSingle(),
+      admin.auth.admin.getUserById(user_id),
+    ])
+    const areas: string[] = Array.isArray(authUser?.user_metadata?.areas_de_atuacao)
+      ? authUser!.user_metadata!.areas_de_atuacao as string[]
+      : []
+    if (aiConfig) systemPrompt = buildSystemPrompt(aiConfig as AiConfig, areas)
 
     // Generate reply
     if (!process.env.OPENAI_API_KEY) return NextResponse.json({ ok: true })
