@@ -79,7 +79,7 @@ export function AppSidebar() {
         <Logo size={32} className="text-primary shrink-0" />
         <div className="min-w-0">
           <p className="text-sm font-semibold text-sidebar-foreground leading-none truncate">
-            Centro de Comando
+            Orbit™
           </p>
           <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
             Método ÓRBITA

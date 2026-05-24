@@ -27,7 +27,7 @@ const subTitles: Record<string, { label: string; sub: string }> = {
 export function TopBar() {
   const pathname = usePathname()
   const base = '/' + (pathname.split('/')[1] ?? '')
-  const { label, sub } = subTitles[pathname] ?? titles[base] ?? { label: 'Centro de Comando', sub: '' }
+  const { label, sub } = subTitles[pathname] ?? titles[base] ?? { label: 'Orbit™', sub: '' }
 
   return (
     <header className="flex items-center justify-between gap-4 px-6 py-4 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-10">

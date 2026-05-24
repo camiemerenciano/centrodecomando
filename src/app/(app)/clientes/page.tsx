@@ -9,13 +9,15 @@ import {
   Plus, Search, Users, TrendingUp, DollarSign, BarChart3,
   AtSign, Mail, Phone, X, Building2, Globe, MapPin,
   FileText, Pencil, Trash2, Save, ChevronRight,
-  Hash, CreditCard, CheckSquare, Calendar,
+  Hash, CreditCard, CheckSquare, Calendar, Bot, Tag,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Status = 'active' | 'paused' | 'churned'
+type Status   = 'active' | 'paused' | 'churned'
+type Contrato = 'sem_contrato' | 'contrato_enviado' | 'contrato_assinado'
+type Reuniao  = 'sem_reuniao'  | 'com_reuniao'
 
 interface Client {
   id: string
@@ -38,6 +40,11 @@ interface Client {
   tasks: number
   notes: string
   servicos: string[]
+  tags: string[]
+  contrato: Contrato
+  reuniao: Reuniao
+  pipelineStage: string
+  updatedAt: string
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -56,6 +63,45 @@ const planColor: Record<string, string> = {
 
 const PLANS    = ['Starter', 'Pro', 'Premium']
 const STATUSES: Status[] = ['active', 'paused', 'churned']
+
+const PIPELINE_STAGES = [
+  { id: 'recepcao',          label: 'Recepção',          cls: 'bg-slate-400/15 text-slate-400 border-slate-400/20'        },
+  { id: 'viabilidade',       label: 'Viabilidade',       cls: 'bg-indigo-400/15 text-indigo-400 border-indigo-400/20'    },
+  { id: 'ag_agendamento',    label: 'Ag. Agendamento',   cls: 'bg-amber-400/15 text-amber-400 border-amber-400/20'       },
+  { id: 'agendado',          label: 'Agendado',          cls: 'bg-sky-400/15 text-sky-400 border-sky-400/20'             },
+  { id: 'contrato_enviado',  label: 'Contrato Enviado',  cls: 'bg-orange-400/15 text-orange-400 border-orange-400/20'    },
+  { id: 'contrato_assinado', label: 'Contrato Assinado', cls: 'bg-emerald-400/15 text-emerald-400 border-emerald-400/20' },
+  { id: 'followup',          label: 'Follow-up',         cls: 'bg-violet-400/15 text-violet-400 border-violet-400/20'    },
+  { id: 'perdido',           label: 'Lead Perdido',      cls: 'bg-red-400/15 text-red-400 border-red-400/20'             },
+]
+
+const CONTRATO_CFG: Record<Contrato, { label: string; cls: string }> = {
+  sem_contrato:      { label: 'Sem contrato',      cls: 'bg-muted text-muted-foreground border-border'              },
+  contrato_enviado:  { label: 'Contrato Enviado',  cls: 'bg-orange-500/15 text-orange-400 border-orange-500/20'     },
+  contrato_assinado: { label: 'Contrato Assinado', cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'  },
+}
+
+const REUNIAO_CFG: Record<Reuniao, { label: string; cls: string }> = {
+  sem_reuniao: { label: 'Sem reunião', cls: 'bg-muted text-muted-foreground border-border'          },
+  com_reuniao: { label: 'Com reunião', cls: 'bg-sky-500/15 text-sky-400 border-sky-500/20'          },
+}
+
+function pipelineCls(id: string) {
+  return PIPELINE_STAGES.find(s => s.id === id) ?? null
+}
+
+function fmtUpdatedAt(iso: string) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+}
+
+function phoneToJid(phone: string): string | null {
+  const d = phone.replace(/\D/g, '')
+  if (d.length < 8) return null
+  const cc = d.startsWith('55') ? d : `55${d}`
+  return `${cc}@s.whatsapp.net`
+}
 
 function toRow(c: Client, userId: string) {
   return {
@@ -80,6 +126,10 @@ function toRow(c: Client, userId: string) {
     tasks: c.tasks,
     notes: c.notes,
     servicos: c.servicos,
+    tags: c.tags,
+    contrato: c.contrato,
+    reuniao: c.reuniao,
+    pipeline_stage: c.pipelineStage,
   }
 }
 
@@ -106,7 +156,50 @@ function fromRow(r: any): Client {
     tasks: r.tasks ?? 0,
     notes: r.notes ?? '',
     servicos: Array.isArray(r.servicos) ? r.servicos : [],
+    tags: Array.isArray(r.tags) ? r.tags : [],
+    contrato: (r.contrato ?? 'sem_contrato') as Contrato,
+    reuniao: (r.reuniao ?? 'sem_reuniao') as Reuniao,
+    pipelineStage: r.pipeline_stage ?? '',
+    updatedAt: r.updated_at ?? r.created_at ?? '',
   }
+}
+
+// ─── TagInput ─────────────────────────────────────────────────────────────────
+
+function TagInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
+  const [input, setInput] = useState('')
+  function add() {
+    const v = input.trim()
+    if (!v || tags.includes(v)) { setInput(''); return }
+    onChange([...tags, v])
+    setInput('')
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {tags.map(t => (
+          <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-muted text-muted-foreground border border-border">
+            <Tag size={8} />{t}
+            <button type="button" onClick={() => onChange(tags.filter(x => x !== t))} className="hover:text-foreground transition-colors">
+              <X size={9} />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-1.5">
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          placeholder="Nova tag…"
+          className="flex-1 h-7 rounded-lg bg-muted border border-border px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+        />
+        <button type="button" onClick={add} className="h-7 px-2.5 rounded-lg bg-muted border border-border text-xs text-muted-foreground hover:text-foreground transition-colors">
+          +
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
@@ -311,6 +404,32 @@ function ClientPanel({
                 </section>
               )}
 
+              <section className="space-y-3">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Comercial</p>
+                <div className="flex items-center gap-2.5">
+                  <div className="flex gap-1.5 flex-wrap">
+                    <Badge className={`text-[10px] ${PIPELINE_STAGES.find(s => s.id === form.pipelineStage)?.cls ?? 'bg-muted text-muted-foreground border-border'}`}>
+                      {PIPELINE_STAGES.find(s => s.id === form.pipelineStage)?.label ?? 'Sem etapa'}
+                    </Badge>
+                    <Badge className={`text-[10px] ${CONTRATO_CFG[form.contrato].cls}`}>{CONTRATO_CFG[form.contrato].label}</Badge>
+                    <Badge className={`text-[10px] ${REUNIAO_CFG[form.reuniao].cls}`}>{REUNIAO_CFG[form.reuniao].label}</Badge>
+                  </div>
+                </div>
+              </section>
+
+              {form.tags.length > 0 && (
+                <section className="space-y-2.5">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Tags</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {form.tags.map(t => (
+                      <span key={t} className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-muted text-muted-foreground border border-border">
+                        <Tag size={9} className="mr-1" />{t}
+                      </span>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {/* Acesso ao Portal */}
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Acesso ao Portal</p>
@@ -453,6 +572,39 @@ function ClientPanel({
                   </div>
                 </section>
               )}
+
+              <section className="space-y-3">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Comercial</p>
+                <div>
+                  <label className={lbl}>Etapa do Pipeline</label>
+                  <select value={form.pipelineStage} onChange={f('pipelineStage')} className={inp + ' cursor-pointer'}>
+                    <option value="">Sem etapa</option>
+                    {PIPELINE_STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={lbl}>Contrato</label>
+                    <select value={form.contrato} onChange={f('contrato')} className={inp + ' cursor-pointer'}>
+                      <option value="sem_contrato">Sem contrato</option>
+                      <option value="contrato_enviado">Contrato Enviado</option>
+                      <option value="contrato_assinado">Contrato Assinado</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lbl}>Reunião</label>
+                    <select value={form.reuniao} onChange={f('reuniao')} className={inp + ' cursor-pointer'}>
+                      <option value="sem_reuniao">Sem reunião</option>
+                      <option value="com_reuniao">Com reunião</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-2.5">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Tags</p>
+                <TagInput tags={form.tags} onChange={tags => setForm(p => ({ ...p, tags }))} />
+              </section>
             </>
           )}
         </div>
@@ -479,6 +631,7 @@ function NewClientPanel({ areas, onClose, onCreate }: { areas: string[]; onClose
   const [form, setForm] = useState<Partial<Client>>({
     status: 'active', plan: 'Starter', mrr: 'R$ 0', since: '',
     assignee: '', assigneeInitials: '', tasks: 0, notes: '', servicos: [],
+    tags: [], contrato: 'sem_contrato', reuniao: 'sem_reuniao', pipelineStage: '',
   })
   const [saving, setSaving] = useState(false)
 
@@ -498,6 +651,9 @@ function NewClientPanel({ areas, onClose, onCreate }: { areas: string[]; onClose
       status: form.status!, plan: form.plan!, mrr: form.mrr!, since: form.since ?? '',
       assignee: form.assignee ?? '', assigneeInitials: form.assigneeInitials ?? '',
       tasks: 0, notes: form.notes ?? '', servicos: form.servicos ?? [],
+      tags: form.tags ?? [], contrato: (form.contrato ?? 'sem_contrato') as Contrato,
+      reuniao: (form.reuniao ?? 'sem_reuniao') as Reuniao, pipelineStage: form.pipelineStage ?? '',
+      updatedAt: '',
     })
     setSaving(false)
   }
@@ -585,6 +741,39 @@ function NewClientPanel({ areas, onClose, onCreate }: { areas: string[]; onClose
               </div>
             </section>
           )}
+
+          <section className="space-y-3">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Comercial</p>
+            <div>
+              <label className={lbl}>Etapa do Pipeline</label>
+              <select value={form.pipelineStage ?? ''} onChange={f('pipelineStage')} className={inp + ' cursor-pointer'}>
+                <option value="">Sem etapa</option>
+                {PIPELINE_STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Contrato</label>
+                <select value={form.contrato ?? 'sem_contrato'} onChange={f('contrato')} className={inp + ' cursor-pointer'}>
+                  <option value="sem_contrato">Sem contrato</option>
+                  <option value="contrato_enviado">Contrato Enviado</option>
+                  <option value="contrato_assinado">Contrato Assinado</option>
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Reunião</label>
+                <select value={form.reuniao ?? 'sem_reuniao'} onChange={f('reuniao')} className={inp + ' cursor-pointer'}>
+                  <option value="sem_reuniao">Sem reunião</option>
+                  <option value="com_reuniao">Com reunião</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-2.5">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Tags</p>
+            <TagInput tags={form.tags ?? []} onChange={tags => setForm(p => ({ ...p, tags }))} />
+          </section>
         </div>
         <div className="px-5 py-4 border-t border-border flex items-center justify-between shrink-0">
           <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
@@ -607,6 +796,7 @@ export default function ClientesPage() {
   const [filter, setFilter]       = useState<'all' | Status>('all')
   const [userId, setUserId]       = useState<string | null>(null)
   const [areas, setAreas]         = useState<string[]>([])
+  const [lunnaMap, setLunnaMap]   = useState<Record<string, boolean>>({})
 
   const supabase = createClient()
 
@@ -622,7 +812,29 @@ export default function ClientesPage() {
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: true })
-      if (data) setClients(data.map(fromRow))
+      if (!data) return
+      const mapped = data.map(fromRow)
+      setClients(mapped)
+
+      // Load Lunna active status per client phone
+      const jidMap: Record<string, string> = {} // jid → clientId
+      for (const c of mapped) {
+        const jid = phoneToJid(c.phone)
+        if (jid) jidMap[jid] = c.id
+      }
+      const jids = Object.keys(jidMap)
+      if (jids.length === 0) return
+      const { data: pausas } = await supabase
+        .from('lunna_pausas')
+        .select('remote_jid')
+        .eq('user_id', user.id)
+        .in('remote_jid', jids)
+      const pausedSet = new Set((pausas ?? []).map(p => p.remote_jid))
+      const lMap: Record<string, boolean> = {}
+      for (const [jid, clientId] of Object.entries(jidMap)) {
+        lMap[clientId] = !pausedSet.has(jid)
+      }
+      setLunnaMap(lMap)
     }
     load()
   }, [])
@@ -675,6 +887,10 @@ export default function ClientesPage() {
       tasks: data.tasks,
       notes: data.notes,
       servicos: data.servicos,
+      tags: data.tags,
+      contrato: data.contrato,
+      reuniao: data.reuniao,
+      pipeline_stage: data.pipelineStage,
     }
     const { data: inserted, error } = await supabase.from('clientes').insert(row).select().single()
     if (error || !inserted) return
@@ -756,81 +972,118 @@ export default function ClientesPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  {['Cliente', 'Status', 'Plano', 'MRR', 'Instagram', 'Responsável', 'Tarefas', 'Desde', ''].map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                  {['Cliente', 'Telefone', 'Área', 'Tags', 'Pipeline', 'Atribuído', 'IA', 'Contrato', 'Reunião', 'Atualização', ''].map(h => (
+                    <th key={h} className="text-left px-3 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(client => (
-                  <tr
-                    key={client.id}
-                    onClick={() => setSelected(client)}
-                    className="border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors group"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="w-8 h-8 shrink-0">
-                          <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">
-                            {client.name.split(' ').slice(0, 2).map(n => n[0]).join('')}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors whitespace-nowrap">{client.name}</p>
-                          <p className="text-xs text-muted-foreground whitespace-nowrap">{client.company}</p>
+                {filtered.map(client => {
+                  const pipe = pipelineCls(client.pipelineStage)
+                  const iaActive = lunnaMap[client.id]
+                  const iaKnown  = client.phone && iaActive !== undefined
+                  return (
+                    <tr
+                      key={client.id}
+                      onClick={() => setSelected(client)}
+                      className="border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors group"
+                    >
+                      {/* Nome */}
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar className="w-7 h-7 shrink-0">
+                            <AvatarFallback className="bg-primary/20 text-primary text-[10px] font-semibold">
+                              {client.name.split(' ').slice(0, 2).map(n => n[0]).join('')}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="text-xs font-medium text-foreground group-hover:text-primary transition-colors whitespace-nowrap">{client.name}</p>
+                            {client.company && <p className="text-[10px] text-muted-foreground whitespace-nowrap">{client.company}</p>}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge className={`text-[10px] ${statusConfig[client.status].cls}`}>
-                        {statusConfig[client.status].label}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge className={`text-[10px] ${planColor[client.plan] ?? 'bg-muted text-muted-foreground border-border'}`}>
-                        {client.plan}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm font-semibold text-foreground whitespace-nowrap">{client.mrr}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
-                        {client.instagram && <><AtSign size={11} /> {client.instagram}</>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        {client.assignee && (
-                          <>
-                            <Avatar className="w-6 h-6">
-                              <AvatarFallback className="text-[10px] bg-primary/20 text-primary font-semibold">
+                      </td>
+                      {/* Telefone */}
+                      <td className="px-3 py-3">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">{client.phone || '—'}</span>
+                      </td>
+                      {/* Área (servicos) */}
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap gap-1 max-w-[140px]">
+                          {client.servicos.slice(0, 2).map(s => (
+                            <span key={s} className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border bg-primary/10 text-primary border-primary/20 whitespace-nowrap">{s}</span>
+                          ))}
+                          {client.servicos.length > 2 && (
+                            <span className="text-[9px] text-muted-foreground">+{client.servicos.length - 2}</span>
+                          )}
+                          {client.servicos.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
+                        </div>
+                      </td>
+                      {/* Tags */}
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap gap-1 max-w-[120px]">
+                          {client.tags.slice(0, 2).map(t => (
+                            <span key={t} className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border bg-muted text-muted-foreground border-border whitespace-nowrap">{t}</span>
+                          ))}
+                          {client.tags.length > 2 && (
+                            <span className="text-[9px] text-muted-foreground">+{client.tags.length - 2}</span>
+                          )}
+                          {client.tags.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
+                        </div>
+                      </td>
+                      {/* Pipeline */}
+                      <td className="px-3 py-3">
+                        {pipe
+                          ? <Badge className={`text-[9px] whitespace-nowrap ${pipe.cls}`}>{pipe.label}</Badge>
+                          : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+                      {/* Atribuído */}
+                      <td className="px-3 py-3">
+                        {client.assignee ? (
+                          <div className="flex items-center gap-1.5">
+                            <Avatar className="w-5 h-5">
+                              <AvatarFallback className="text-[9px] bg-primary/20 text-primary font-semibold">
                                 {client.assigneeInitials || client.assignee[0]?.toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             <span className="text-xs text-muted-foreground whitespace-nowrap">{client.assignee}</span>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs font-medium whitespace-nowrap ${client.tasks > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
-                        {client.tasks > 0 ? `${client.tasks} abertas` : '—'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">{client.since}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <ChevronRight size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </td>
-                  </tr>
-                ))}
+                          </div>
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+                      {/* IA */}
+                      <td className="px-3 py-3">
+                        {iaKnown ? (
+                          <Badge className={`text-[9px] gap-1 ${iaActive ? 'bg-primary/15 text-primary border-primary/20' : 'bg-muted text-muted-foreground border-border'}`}>
+                            <Bot size={8} />{iaActive ? 'Ativa' : 'Pausada'}
+                          </Badge>
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+                      {/* Contrato */}
+                      <td className="px-3 py-3">
+                        <Badge className={`text-[9px] whitespace-nowrap ${CONTRATO_CFG[client.contrato].cls}`}>
+                          {CONTRATO_CFG[client.contrato].label}
+                        </Badge>
+                      </td>
+                      {/* Reunião */}
+                      <td className="px-3 py-3">
+                        <Badge className={`text-[9px] whitespace-nowrap ${REUNIAO_CFG[client.reuniao].cls}`}>
+                          {REUNIAO_CFG[client.reuniao].label}
+                        </Badge>
+                      </td>
+                      {/* Última atualização */}
+                      <td className="px-3 py-3">
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">{fmtUpdatedAt(client.updatedAt)}</span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <ChevronRight size={13} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </td>
+                    </tr>
+                  )
+                })}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-5 py-12 text-center">
+                    <td colSpan={11} className="px-5 py-12 text-center">
                       <p className="text-sm text-muted-foreground">Nenhum cliente encontrado.</p>
                     </td>
                   </tr>

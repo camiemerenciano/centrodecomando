@@ -196,7 +196,7 @@ function WhatsAppCard() {
 
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Receba e envie mensagens do WhatsApp diretamente no Centro de Comando.
+          Receba e envie mensagens do WhatsApp diretamente no Orbit™.
           Todas as conversas ficam centralizadas no módulo de Mensagens.
         </p>
 
@@ -549,7 +549,7 @@ function GoogleCalendarCard() {
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground leading-relaxed">
             Sincronize eventos e prazos com o Google Agenda. Postagens, reuniões e
-            deadlines aparecem automaticamente no Calendário do Centro de Comando.
+            deadlines aparecem automaticamente no Calendário do Orbit™.
           </p>
 
           {status === 'connecting' && (

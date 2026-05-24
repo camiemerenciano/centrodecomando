@@ -20,7 +20,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <div className="inline-flex items-center gap-3">
             <Logo size={36} className="text-primary" />
             <span className="text-xl font-semibold tracking-tight text-foreground">
-              Centro de Comando
+              Orbit™
             </span>
           </div>
         </div>
