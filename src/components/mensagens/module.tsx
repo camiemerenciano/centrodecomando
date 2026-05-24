@@ -634,7 +634,7 @@ export function MensagensModule() {
   }
 
   const filtered = conversations.filter(c => {
-    if (allowedJids !== null && !allowedJids.has(c.id)) return false
+    if (allowedJids !== null && allowedJids.size > 0 && !allowedJids.has(c.id)) return false
     const q = search.toLowerCase()
     return (
       c.name.toLowerCase().includes(q) &&
