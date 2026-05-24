@@ -19,7 +19,7 @@ interface AiConfig {
   exemplos: string[]
 }
 
-function buildSystemPrompt(c: AiConfig): string {
+function buildSystemPrompt(c: AiConfig, areas: string[] = []): string {
   const parts: string[] = []
 
   parts.push(`você é ${c.nome}${c.cargo ? `, ${c.cargo}` : ''}${c.agencia ? ` da ${c.agencia}` : ''}.`)
@@ -50,6 +50,10 @@ function buildSystemPrompt(c: AiConfig): string {
 
   if (c.exemplos.length) {
     parts.push(`\nexemplos de mensagens:\n${c.exemplos.map(e => `- "${e}"`).join('\n')}`)
+  }
+
+  if (areas.length) {
+    parts.push(`\nserviços que a agência oferece (SOMENTE ofereça estes, nunca mencione outros): ${areas.join(', ')}`)
   }
 
   parts.push(`\nescreva sempre em minúsculo. mensagens curtas, máximo 2 linhas. retorne APENAS o texto da resposta, sem explicações.`)
@@ -142,17 +146,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Nenhuma mensagem fornecida' }, { status: 400 })
   }
 
-  // Fetch user's AI config from Supabase
+  // Fetch user's AI config + areas from Supabase
   let systemPrompt = FALLBACK_PROMPT
   if (userId) {
     try {
       const admin = createAdminClient()
-      const { data } = await admin
-        .from('ai_config')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle()
-      if (data) systemPrompt = buildSystemPrompt(data as AiConfig)
+      const [{ data }, { data: { user: authUser } }] = await Promise.all([
+        admin.from('ai_config').select('*').eq('user_id', userId).maybeSingle(),
+        admin.auth.admin.getUserById(userId),
+      ])
+      const areas: string[] = Array.isArray(authUser?.user_metadata?.areas_de_atuacao)
+        ? (authUser!.user_metadata!.areas_de_atuacao as string[])
+        : []
+      if (data) systemPrompt = buildSystemPrompt(data as AiConfig, areas)
     } catch { /* use fallback */ }
   }
 

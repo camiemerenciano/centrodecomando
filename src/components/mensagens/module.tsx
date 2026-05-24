@@ -196,6 +196,7 @@ export function MensagensModule() {
   const loadedConvs      = useRef<Set<string>>(new Set())
   const lunnaActiveRef   = useRef<Record<string, boolean>>({})
   const gcalTokenRef     = useRef<string | null>(null)
+  const userIdRef        = useRef<string | null>(null)
   const evoRef           = useRef<EvoConfig | null>(null)
   const conversationsRef = useRef<ConvItem[]>([])
   const messagesMapRef   = useRef<Record<string, MsgItem[]>>({})
@@ -211,6 +212,7 @@ export function MensagensModule() {
   // Keep refs in sync
   useEffect(() => { lunnaActiveRef.current   = lunnaActiveMap },   [lunnaActiveMap])
   useEffect(() => { gcalTokenRef.current     = gcalToken },         [gcalToken])
+  useEffect(() => { userIdRef.current        = userId },            [userId])
   useEffect(() => { evoRef.current           = evo },               [evo])
   useEffect(() => { conversationsRef.current = conversations },     [conversations])
   useEffect(() => { messagesMapRef.current   = messagesMap },       [messagesMap])
@@ -390,7 +392,7 @@ export function MensagensModule() {
           messages: allMsgs.map(m => ({ from: m.mine ? 'Lunna' : conv.name, content: m.content })),
           clientName: conv.name,
           gcalToken: gcalTokenRef.current ?? undefined,
-          userId: userId ?? undefined,
+          userId: userIdRef.current ?? undefined,
         }),
       })
       const data = await res.json()
