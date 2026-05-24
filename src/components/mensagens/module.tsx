@@ -287,6 +287,19 @@ export function MensagensModule() {
         const restored = saved && mapped.some(c => c.id === saved) ? saved : mapped[0].id
         setActiveId(restored)
       }
+
+      // Sync all conversations to pipeline_leads (only inserts new ones, preserves existing stage/status)
+      fetch('/api/pipeline/leads/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leads: mapped.map(c => ({
+            remote_jid: c.id,
+            title:      c.name || c.id.split('@')[0],
+            client:     c.name || c.id.split('@')[0],
+          })),
+        }),
+      }).catch(() => { /* silently ignore */ })
     } finally {
       setLoadingChats(false)
     }
@@ -473,32 +486,19 @@ export function MensagensModule() {
       localStorage.setItem('msg_meta', JSON.stringify(meta))
     } catch { /* ignore */ }
 
-    // Supabase browser client — secondary, so pipeline kanban sees the data
-    if (!userId) return
+    // Admin API route — bypasses RLS so pipeline kanban sees the data
     try {
-      const fields: Record<string, unknown> = {}
-      if (patch.stage)  fields.stage       = patch.stage
-      if (patch.status) fields.conv_status  = patch.status
-
-      const { data: existing } = await supabase
-        .from('pipeline_leads')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('remote_jid', jid)
-        .maybeSingle()
-
-      if (existing) {
-        await supabase.from('pipeline_leads').update(fields).eq('id', existing.id)
-      } else {
-        const phone = jid.split('@')[0] ?? jid
-        const name  = conversations.find(c => c.id === jid)?.name ?? `+${phone}`
-        await supabase.from('pipeline_leads').insert({
-          user_id: userId, remote_jid: jid, title: name, client: name,
-          stage: patch.stage ?? 'recepcao', priority: 'medium',
-          ...(patch.status ? { conv_status: patch.status } : {}),
-        })
-      }
-    } catch (err) { console.error('[saveMeta] DB error:', err) }
+      const phone = jid.split('@')[0] ?? jid
+      const name  = conversations.find(c => c.id === jid)?.name ?? `+${phone}`
+      const body: Record<string, unknown> = { remote_jid: jid, title: name, client: name }
+      if (patch.stage)  body.stage       = patch.stage
+      if (patch.status) body.conv_status = patch.status
+      await fetch('/api/pipeline/leads', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    } catch (err) { console.error('[saveMeta] API error:', err) }
   }
 
   async function changePipelineStage(stage: PipelineStage) {
