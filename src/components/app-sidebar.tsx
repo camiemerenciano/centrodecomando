@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import {
   LayoutDashboard,
   MessageSquare,
@@ -24,6 +25,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { createClient } from '@/lib/supabase/client'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,6 +66,18 @@ const navGroups = [
 export function AppSidebar() {
   const pathname = usePathname()
   const { user, role, signOut } = useAuth()
+  const [teamRole, setTeamRole] = useState<'admin' | 'membro' | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+    const supabase = createClient()
+    supabase
+      .from('team_members')
+      .select('id')
+      .eq('member_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => setTeamRole(data ? 'membro' : 'admin'))
+  }, [user])
 
   const initials = (user?.user_metadata?.full_name as string | undefined)
     ?.split(' ')
@@ -84,6 +98,15 @@ export function AppSidebar() {
           <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
             Método ÓRBITA
           </p>
+          {teamRole && (
+            <span className={`inline-flex items-center mt-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${
+              teamRole === 'admin'
+                ? 'bg-amber-500/15 text-amber-400'
+                : 'bg-sky-500/15 text-sky-400'
+            }`}>
+              {teamRole === 'admin' ? 'Admin' : 'Membro'}
+            </span>
+          )}
         </div>
       </div>
 
