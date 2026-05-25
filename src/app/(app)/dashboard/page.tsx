@@ -1,15 +1,18 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import {
   Users, CheckSquare, MessageSquare, Clock,
   ArrowRight, AlertTriangle, AlertCircle,
   MessagesSquare, Timer, TrendingUp, DollarSign,
-  Circle,
+  Circle, RefreshCw,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/client'
 
-export const dynamic = 'force-dynamic'
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 function parseMrr(raw: string): number {
   return parseFloat((raw ?? '').replace(/[^\d,]/g, '').replace(',', '.')) || 0
@@ -45,110 +48,152 @@ function fmtDate(d: string) {
   return d
 }
 
-export default async function DashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+const funnelStages = [
+  { id: 'recepcao',          label: 'Recepção',          color: 'bg-slate-400'   },
+  { id: 'viabilidade',       label: 'Viabilidade',       color: 'bg-indigo-400'  },
+  { id: 'ag_agendamento',    label: 'Ag. Agendamento',   color: 'bg-amber-400'   },
+  { id: 'agendado',          label: 'Agendado',          color: 'bg-sky-400'     },
+  { id: 'contrato_enviado',  label: 'Contrato Enviado',  color: 'bg-orange-400'  },
+  { id: 'contrato_assinado', label: 'Contrato Assinado', color: 'bg-emerald-400' },
+  { id: 'followup',          label: 'Follow-up',         color: 'bg-violet-400'  },
+]
 
-  // ── Clientes ──────────────────────────────────────────────────────────────────
-  const { data: clientes } = user
-    ? await supabase.from('clientes').select('status, mrr').eq('user_id', user.id)
-    : { data: [] }
+// ── types ─────────────────────────────────────────────────────────────────────
 
-  const ativos      = (clientes ?? []).filter(c => c.status === 'active')
+interface Cliente { status: string; mrr: string }
+interface Lead    { stage: string }
+interface Tarefa  { id: string; title: string; client: string; priority: string; status: string; due_date: string }
+interface MsgStats {
+  connected: boolean
+  naoLidas:   number
+  semResposta: number
+  novas:      number
+  tempoMedio: number | null
+}
+
+// ── component ─────────────────────────────────────────────────────────────────
+
+export default function DashboardPage() {
+  const supabase = createClient()
+  const todayStr = new Date().toISOString().split('T')[0]
+
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [leads,    setLeads]    = useState<Lead[]>([])
+  const [tarefas,  setTarefas]  = useState<Tarefa[]>([])
+  const [msgStats, setMsgStats] = useState<MsgStats>({ connected: false, naoLidas: 0, semResposta: 0, novas: 0, tempoMedio: null })
+  const [loading,  setLoading]  = useState(true)
+  const [lastSync, setLastSync] = useState<Date | null>(null)
+
+  // ── fetch base data ──────────────────────────────────────────────────────────
+
+  const fetchBase = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const [{ data: c }, { data: l }, { data: t }] = await Promise.all([
+      supabase.from('clientes').select('status, mrr').eq('user_id', user.id),
+      supabase.from('pipeline_leads').select('stage').eq('user_id', user.id),
+      supabase.from('tarefas').select('id, title, client, priority, status, due_date').eq('user_id', user.id),
+    ])
+
+    if (c) setClientes(c)
+    if (l) setLeads(l)
+    if (t) setTarefas(t)
+    setLoading(false)
+  }, [supabase])
+
+  // ── fetch messages stats ─────────────────────────────────────────────────────
+
+  const fetchMsgStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/dashboard/messages')
+      if (res.ok) {
+        const data = await res.json()
+        setMsgStats(data)
+        setLastSync(new Date())
+      }
+    } catch { /* silently ignore */ }
+  }, [])
+
+  // ── on mount: load + realtime ────────────────────────────────────────────────
+
+  useEffect(() => {
+    fetchBase()
+    fetchMsgStats()
+
+    // poll messages every 60s
+    const msgInterval = setInterval(fetchMsgStats, 60_000)
+
+    // re-fetch on window focus (switching from mensagens tab back)
+    const onFocus = () => fetchMsgStats()
+    window.addEventListener('focus', onFocus)
+
+    return () => {
+      clearInterval(msgInterval)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [fetchBase, fetchMsgStats])
+
+  // ── supabase realtime ────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+
+      const channel = supabase
+        .channel('dashboard-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_leads', filter: `user_id=eq.${user.id}` },
+          () => supabase.from('pipeline_leads').select('stage').eq('user_id', user.id).then(({ data }) => { if (data) setLeads(data) })
+        )
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefas', filter: `user_id=eq.${user.id}` },
+          () => supabase.from('tarefas').select('id, title, client, priority, status, due_date').eq('user_id', user.id).then(({ data }) => { if (data) setTarefas(data) })
+        )
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes', filter: `user_id=eq.${user.id}` },
+          () => supabase.from('clientes').select('status, mrr').eq('user_id', user.id).then(({ data }) => { if (data) setClientes(data) })
+        )
+        .subscribe()
+
+      return () => { supabase.removeChannel(channel) }
+    })
+  }, [supabase])
+
+  // ── derived data ─────────────────────────────────────────────────────────────
+
+  const ativos      = clientes.filter(c => c.status === 'active')
   const totalAtivos = ativos.length
   const mrr         = ativos.reduce((s, c) => s + parseMrr(c.mrr), 0)
   const ticket      = totalAtivos > 0 ? mrr / totalAtivos : 0
 
-  // ── Pipeline ──────────────────────────────────────────────────────────────────
-  const { data: leads } = user
-    ? await supabase.from('pipeline_leads').select('stage').eq('user_id', user.id)
-    : { data: [] }
-
   const stageCounts: Record<string, number> = {}
-  for (const l of leads ?? []) stageCounts[l.stage] = (stageCounts[l.stage] ?? 0) + 1
-
-  const funnelStages = [
-    { id: 'recepcao',          label: 'Recepção',          color: 'bg-slate-400'   },
-    { id: 'viabilidade',       label: 'Viabilidade',       color: 'bg-indigo-400'  },
-    { id: 'ag_agendamento',    label: 'Ag. Agendamento',   color: 'bg-amber-400'   },
-    { id: 'agendado',          label: 'Agendado',          color: 'bg-sky-400'     },
-    { id: 'contrato_enviado',  label: 'Contrato Enviado',  color: 'bg-orange-400'  },
-    { id: 'contrato_assinado', label: 'Contrato Assinado', color: 'bg-emerald-400' },
-    { id: 'followup',          label: 'Follow-up',         color: 'bg-violet-400'  },
-  ]
+  for (const l of leads) stageCounts[l.stage] = (stageCounts[l.stage] ?? 0) + 1
   const totalLeads = funnelStages.reduce((s, st) => s + (stageCounts[st.id] ?? 0), 0)
 
-  // ── Tarefas ───────────────────────────────────────────────────────────────────
-  const { data: tarefasRows } = user
-    ? await supabase.from('tarefas').select('id, title, client, priority, status, due_date').eq('user_id', user.id)
-    : { data: [] }
-
-  const todayStr = new Date().toISOString().split('T')[0]
-
-  const tarefasAbertas   = (tarefasRows ?? []).filter(t => t.status !== 'concluido')
+  const tarefasAbertas   = tarefas.filter(t => t.status !== 'concluido')
   const tarefasAtrasadas = tarefasAbertas.filter(t => t.due_date && t.due_date < todayStr)
-  const tarefasUrgentes  = tarefasAbertas
-    .filter(t => t.priority === 'urgent' || t.priority === 'high')
-    .slice(0, 5)
+  const tarefasUrgentes  = tarefasAbertas.filter(t => t.priority === 'urgent' || t.priority === 'high').slice(0, 5)
 
-  // ── Mensagens (Evolution API) ─────────────────────────────────────────────────
-  let msgsNaoLidas    = 0
-  let msgsSemResposta = 0
-  let novasConversas  = 0
-  let tempoMedioHoras: number | null = null
+  const { connected, naoLidas, semResposta, novas, tempoMedio } = msgStats
 
-  const { data: integracao } = user
-    ? await supabase.from('integracoes')
-        .select('evo_api_url, evo_api_key, evo_instance')
-        .eq('user_id', user.id)
-        .maybeSingle()
-    : { data: null }
-
-  if (integracao?.evo_api_url && integracao?.evo_api_key && integracao?.evo_instance) {
-    try {
-      const base = (integracao.evo_api_url as string).replace(/\/$/, '')
-      const res  = await fetch(`${base}/chat/findChats/${integracao.evo_instance}`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', apikey: integracao.evo_api_key as string },
-        body:    JSON.stringify({}),
-        signal:  AbortSignal.timeout(5000),
-      })
-      if (res.ok) {
-        const chats = await res.json().catch(() => [])
-        if (Array.isArray(chats)) {
-          const nowSec    = Date.now() / 1000
-          const dayAgo    = nowSec - 86400
-          const tempos: number[] = []
-
-          for (const chat of chats) {
-            msgsNaoLidas += (chat?.unreadCount ?? 0)
-
-            const fromMe = chat?.lastMessage?.key?.fromMe ?? true
-            if (!fromMe) {
-              msgsSemResposta++
-              const ts = chat?.lastMessage?.messageTimestamp
-              const tsNum = typeof ts === 'number' ? ts
-                : typeof ts === 'string' ? parseInt(ts, 10)
-                : (ts as Record<string, number>)?.low ?? 0
-              if (tsNum > 0) tempos.push((nowSec - tsNum) / 3600)
-            }
-
-            const lastTs = chat?.lastMessage?.messageTimestamp
-            const lastNum = typeof lastTs === 'number' ? lastTs
-              : typeof lastTs === 'string' ? parseInt(lastTs, 10)
-              : (lastTs as Record<string, number>)?.low ?? 0
-            if (lastNum > dayAgo) novasConversas++
-          }
-
-          if (tempos.length > 0)
-            tempoMedioHoras = tempos.reduce((a, b) => a + b, 0) / tempos.length
-        }
-      }
-    } catch { /* Evolution API offline ou sem config */ }
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-2 text-muted-foreground text-sm">
+        <RefreshCw size={14} className="animate-spin" /> Carregando...
+      </div>
+    )
   }
 
   return (
     <div className="space-y-8 max-w-[1400px]">
+
+      {/* sync indicator */}
+      {lastSync && (
+        <div className="flex items-center justify-end gap-1.5 -mb-6">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[10px] text-muted-foreground/50">
+            atualizado {lastSync.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+      )}
 
       {/* ── Nível 1: Saúde do Negócio ── */}
       <section className="space-y-3">
@@ -171,7 +216,7 @@ export default async function DashboardPage() {
                       <TrendingUp size={12} className="text-emerald-400" />
                       <span className="text-xs text-muted-foreground">
                         {totalAtivos > 0
-                          ? `${(clientes ?? []).length} total cadastrado${(clientes ?? []).length !== 1 ? 's' : ''}`
+                          ? `${clientes.length} total cadastrado${clientes.length !== 1 ? 's' : ''}`
                           : 'sem clientes ativos ainda'}
                       </span>
                     </div>
@@ -233,7 +278,7 @@ export default async function DashboardPage() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">Msgs sem Resposta</p>
                   <p className="text-3xl font-bold text-amber-400 mt-1 leading-none">
-                    {msgsSemResposta > 0 ? msgsSemResposta : integracao ? '0' : '–'}
+                    {semResposta > 0 ? semResposta : connected ? '0' : '–'}
                   </p>
                 </div>
                 <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center">
@@ -252,7 +297,7 @@ export default async function DashboardPage() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">Tempo Médio sem Resp.</p>
                   <p className="text-3xl font-bold text-violet-400 mt-1 leading-none">
-                    {tempoMedioHoras !== null ? fmtHours(tempoMedioHoras) : '–'}
+                    {tempoMedio !== null ? fmtHours(tempoMedio) : '–'}
                   </p>
                 </div>
                 <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center">
@@ -298,7 +343,7 @@ export default async function DashboardPage() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">Mensagens Não Lidas</p>
                   <p className="text-3xl font-bold text-emerald-400 mt-1 leading-none">
-                    {msgsNaoLidas > 0 ? msgsNaoLidas : integracao ? '0' : '–'}
+                    {naoLidas > 0 ? naoLidas : connected ? '0' : '–'}
                   </p>
                 </div>
                 <div className="w-9 h-9 rounded-lg bg-emerald-400/10 flex items-center justify-center">
@@ -317,7 +362,7 @@ export default async function DashboardPage() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">Novas Conversas</p>
                   <p className="text-3xl font-bold text-indigo-400 mt-1 leading-none">
-                    {novasConversas > 0 ? novasConversas : integracao ? '0' : '–'}
+                    {novas > 0 ? novas : connected ? '0' : '–'}
                   </p>
                 </div>
                 <div className="w-9 h-9 rounded-lg bg-indigo-400/10 flex items-center justify-center">
