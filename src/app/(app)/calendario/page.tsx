@@ -162,6 +162,8 @@ type EditForm = {
   type: EventType
   startH: string // "HH:MM"
   endH: string
+  dayIdx: number
+  isNew: boolean
 }
 
 function toTimeStr(h: number) {
@@ -287,8 +289,19 @@ export default function CalendarioPage() {
 
   const allEvents = [...localEvents, ...googleEvents]
 
+  function openCreate() {
+    const defaultDay = todayIdx >= 0 ? todayIdx : 0
+    const placeholder: CalEvent = {
+      id: `new-${Date.now()}`, title: '', client: '',
+      type: 'meeting', day: defaultDay, startH: 9, endH: 10,
+      color: eventBgColor['meeting'],
+    }
+    setEditingEvent(placeholder)
+    setEditForm({ title: '', client: '', type: 'meeting', startH: '09:00', endH: '10:00', dayIdx: defaultDay, isNew: true })
+  }
+
   function openEdit(ev: CalEvent) {
-    if (ev.type === 'google') return // Google events are read-only
+    if (ev.type === 'google') return
     setEditingEvent(ev)
     setEditForm({
       title:  ev.title,
@@ -296,25 +309,28 @@ export default function CalendarioPage() {
       type:   ev.type,
       startH: toTimeStr(ev.startH),
       endH:   toTimeStr(ev.endH),
+      dayIdx: ev.day,
+      isNew:  false,
     })
   }
 
   function saveEdit() {
     if (!editingEvent || !editForm) return
-    setLocalEvents(prev => prev.map(e =>
-      e.id === editingEvent.id
-        ? { ...e,
-            title:  editForm.title,
-            client: editForm.client,
-            type:   editForm.type,
-            startH: fromTimeStr(editForm.startH),
-            endH:   fromTimeStr(editForm.endH),
-            color:  typeColor[editForm.type]
-              .replace('bg-','').split(' ')[0]
-              .replace(/\/15|\/20/,'') + ' ' + eventBgColor[editForm.type],
-          }
-        : e
-    ))
+    const updated: CalEvent = {
+      ...editingEvent,
+      title:  editForm.title,
+      client: editForm.client,
+      type:   editForm.type,
+      day:    editForm.dayIdx,
+      startH: fromTimeStr(editForm.startH),
+      endH:   fromTimeStr(editForm.endH),
+      color:  eventBgColor[editForm.type],
+    }
+    if (editForm.isNew) {
+      setLocalEvents(prev => [...prev, { ...updated, id: `local-${Date.now()}` }])
+    } else {
+      setLocalEvents(prev => prev.map(e => e.id === editingEvent.id ? updated : e))
+    }
     setEditingEvent(null)
     setEditForm(null)
   }
@@ -382,7 +398,7 @@ export default function CalendarioPage() {
                 </button>
               ))}
             </div>
-            <Button size="sm" className="h-7 bg-primary hover:bg-primary/90 text-xs">
+            <Button size="sm" onClick={openCreate} className="h-7 bg-primary hover:bg-primary/90 text-xs">
               <Plus size={13} /> Evento
             </Button>
           </div>
@@ -589,10 +605,12 @@ export default function CalendarioPage() {
         >
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
             {/* Header */}
-            <div className={`px-5 py-4 flex items-center justify-between border-b border-border ${eventBgColor[editingEvent.type]} bg-opacity-30`}>
+            <div className={`px-5 py-4 flex items-center justify-between border-b border-border ${eventBgColor[editForm.type]} bg-opacity-30`}>
               <div className="flex items-center gap-2">
-                <span>{typeIcon[editingEvent.type]}</span>
-                <p className="text-sm font-semibold text-foreground">Editar evento</p>
+                <span>{typeIcon[editForm.type]}</span>
+                <p className="text-sm font-semibold text-foreground">
+                  {editForm.isNew ? 'Novo evento' : 'Editar evento'}
+                </p>
               </div>
               <button
                 onClick={() => { setEditingEvent(null); setEditForm(null) }}
@@ -607,8 +625,10 @@ export default function CalendarioPage() {
               <div>
                 <label className="block text-xs font-medium text-foreground/80 mb-1.5">Título</label>
                 <input
+                  autoFocus
                   value={editForm.title}
                   onChange={e => setEditForm(f => f && ({ ...f, title: e.target.value }))}
+                  placeholder="Ex: Reunião com cliente"
                   className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                 />
               </div>
@@ -618,21 +638,38 @@ export default function CalendarioPage() {
                 <input
                   value={editForm.client}
                   onChange={e => setEditForm(f => f && ({ ...f, client: e.target.value }))}
+                  placeholder="Nome do cliente (opcional)"
                   className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-foreground/80 mb-1.5">Tipo</label>
-                <select
-                  value={editForm.type}
-                  onChange={e => setEditForm(f => f && ({ ...f, type: e.target.value as EventType }))}
-                  className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                >
-                  {(Object.keys(typeLabels) as EventType[]).filter(t => t !== 'google').map(t => (
-                    <option key={t} value={t}>{typeLabels[t]}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-foreground/80 mb-1.5">Tipo</label>
+                  <select
+                    value={editForm.type}
+                    onChange={e => setEditForm(f => f && ({ ...f, type: e.target.value as EventType }))}
+                    className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                  >
+                    {(Object.keys(typeLabels) as EventType[]).filter(t => t !== 'google').map(t => (
+                      <option key={t} value={t}>{typeLabels[t]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground/80 mb-1.5">Dia</label>
+                  <select
+                    value={editForm.dayIdx}
+                    onChange={e => setEditForm(f => f && ({ ...f, dayIdx: Number(e.target.value) }))}
+                    className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                  >
+                    {weekDays.map((d, i) => (
+                      <option key={i} value={i}>
+                        {weekDayLabels[d.getDay()]} {d.getDate()}/{d.getMonth() + 1}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -665,7 +702,7 @@ export default function CalendarioPage() {
                 onClick={saveEdit}
                 disabled={!editForm.title.trim()}
               >
-                Salvar alterações
+                {editForm.isNew ? 'Criar evento' : 'Salvar alterações'}
               </Button>
               <Button
                 variant="outline"
