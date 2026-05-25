@@ -48,7 +48,7 @@ agendamento de reuniões (você tem acesso ao Google Agenda):
 - quando o cliente confirmar um horário, colete (se ainda não tiver): nome completo, nome da empresa, telefone e objetivo da reunião
 - com TODOS os dados em mãos, chame criar_evento OBRIGATORIAMENTE — nunca confirme o agendamento sem ter chamado a ferramenta primeiro
 - se criar_evento retornar erro, diga ao cliente que houve um problema e peça para ele confirmar por outro canal
-- após criar_evento retornar sucesso, confirme o agendamento de forma natural e tranquila
+- após criar_evento retornar sucesso, confirme o agendamento E envie o link meet que veio no retorno — ex: "call marcada! aqui está o link da reunião: https://meet.google.com/xxx"
 - calls duram 1 hora por padrão, a menos que o cliente diga diferente`)
   }
 
@@ -315,19 +315,29 @@ export async function POST(request: NextRequest) {
           return `horário ocupado: ${events.map((e: { summary?: string }) => e.summary ?? 'evento').join(', ')}`
         }
         if (name === 'criar_evento') {
-          const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${gcalToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              summary:     `Call — ${args.nome_cliente} (${args.nome_empresa})`,
-              description: `Objetivo: ${args.objetivo}\nTelefone: ${args.telefone}`,
-              start: { dateTime: args.data_inicio, timeZone: 'America/Sao_Paulo' },
-              end:   { dateTime: args.data_fim,    timeZone: 'America/Sao_Paulo' },
-            }),
-          })
+          const res = await fetch(
+            'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1',
+            {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${gcalToken}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                summary:     `Call — ${args.nome_cliente} (${args.nome_empresa})`,
+                description: `Objetivo: ${args.objetivo}\nTelefone: ${args.telefone}`,
+                start: { dateTime: args.data_inicio, timeZone: 'America/Sao_Paulo' },
+                end:   { dateTime: args.data_fim,    timeZone: 'America/Sao_Paulo' },
+                conferenceData: {
+                  createRequest: {
+                    requestId: `orbit-${Date.now()}`,
+                    conferenceSolutionKey: { type: 'hangoutsMeet' },
+                  },
+                },
+              }),
+            }
+          )
           const d = await res.json()
           if (!res.ok) return `erro ao criar evento: ${JSON.stringify(d.error)}`
-          return `evento criado: ${d.summary} em ${d.start?.dateTime}`
+          const meetLink = d.conferenceData?.entryPoints?.find((e: { entryPointType: string; uri: string }) => e.entryPointType === 'video')?.uri ?? ''
+          return `evento criado: ${d.summary} em ${d.start?.dateTime}. link meet: ${meetLink}`
         }
         return 'tool desconhecida'
       }
