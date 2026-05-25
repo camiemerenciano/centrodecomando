@@ -11,8 +11,6 @@ import {
   XCircle,
   RefreshCw,
   Loader2,
-  Eye,
-  EyeOff,
   Unplug,
   Plug,
   Calendar,
@@ -30,10 +28,9 @@ type WaStatus = 'disconnected' | 'loading_qr' | 'awaiting_scan' | 'connected'
 
 function WhatsAppCard() {
   const [status, setStatus]     = useState<WaStatus>('disconnected')
+  const [instance, setInstance] = useState('')
   const [apiUrl, setApiUrl]     = useState('')
   const [apiKey, setApiKey]     = useState('')
-  const [instance, setInstance] = useState('')
-  const [showKey, setShowKey]   = useState(false)
   const [qrBase64, setQrBase64] = useState('')
   const [qrCode, setQrCode]     = useState('')
   const [qrError, setQrError]   = useState('')
@@ -41,32 +38,26 @@ function WhatsAppCard() {
   const [expired, setExpired]   = useState(false)
   const supabase = createClient()
 
-  async function getUserId() {
-    const { data: { user } } = await supabase.auth.getUser()
-    return user?.id ?? null
-  }
-
   async function saveEvoToSupabase(url: string, key: string, inst: string) {
-    const userId = await getUserId()
-    if (!userId) return
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
     await supabase.from('integracoes').upsert({
-      user_id:          userId,
+      user_id:          user.id,
       evo_api_url:      url,
       evo_api_key:      key,
       evo_instance:     inst,
       evo_connected_at: new Date().toISOString(),
     }, { onConflict: 'user_id' })
-    // keep localStorage in sync for the messages module
     localStorage.setItem('evo_apiUrl',   url)
     localStorage.setItem('evo_apiKey',   key)
     localStorage.setItem('evo_instance', inst)
   }
 
   async function clearEvoFromSupabase() {
-    const userId = await getUserId()
-    if (!userId) return
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
     await supabase.from('integracoes').upsert({
-      user_id:          userId,
+      user_id:          user.id,
       evo_api_url:      null,
       evo_api_key:      null,
       evo_instance:     null,
@@ -79,19 +70,18 @@ function WhatsAppCard() {
 
   // Restore from Supabase on mount
   useEffect(() => {
-    getUserId().then(async userId => {
-      if (!userId) return
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
       const { data } = await supabase
         .from('integracoes')
         .select('evo_api_url, evo_api_key, evo_instance')
-        .eq('user_id', userId)
+        .eq('user_id', user.id)
         .maybeSingle()
       if (data?.evo_api_url && data?.evo_api_key && data?.evo_instance) {
         setApiUrl(data.evo_api_url)
         setApiKey(data.evo_api_key)
         setInstance(data.evo_instance)
         setStatus('connected')
-        // keep localStorage in sync for messages module
         localStorage.setItem('evo_apiUrl',   data.evo_api_url)
         localStorage.setItem('evo_apiKey',   data.evo_api_key)
         localStorage.setItem('evo_instance', data.evo_instance)
@@ -116,7 +106,7 @@ function WhatsAppCard() {
 
   // Poll connection state while showing QR
   useEffect(() => {
-    if (status !== 'awaiting_scan') return
+    if (status !== 'awaiting_scan' || !apiUrl || !apiKey || !instance) return
     const poll = setInterval(async () => {
       try {
         const res  = await fetch('/api/evolution/state', {
@@ -139,31 +129,20 @@ function WhatsAppCard() {
     setQrError('')
     setStatus('loading_qr')
     try {
-      const res = await fetch('/api/evolution/qr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiUrl, apiKey, instanceName: instance }),
-      })
+      // Chama a rota automática — usa env vars do servidor, sem precisar de credenciais no frontend
+      const res = await fetch('/api/evolution/auto-qr', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? `Erro ${res.status}`)
       setQrBase64(data.qrBase64 ?? '')
       setQrCode(data.qrCode ?? '')
+      setInstance(data.instanceName ?? '')
+      setApiUrl(data.apiUrl ?? '')
+      setApiKey(data.apiKey ?? '')
       setStatus('awaiting_scan')
     } catch (err: unknown) {
       setQrError(err instanceof Error ? err.message : 'Erro ao gerar QR Code')
       setStatus('disconnected')
     }
-  }
-
-  async function handleGenerateQr() {
-    if (!apiUrl || !apiKey || !instance) return
-    await fetchQr()
-  }
-
-  async function handleRefreshQr() {
-    setExpired(false)
-    setTtl(QR_TTL)
-    await fetchQr()
   }
 
   async function handleDisconnect() {
@@ -173,9 +152,10 @@ function WhatsAppCard() {
     setQrCode('')
     setQrError('')
     setExpired(false)
+    setInstance('')
+    setApiUrl('')
+    setApiKey('')
   }
-
-  const formValid = apiUrl.trim() && apiKey.trim() && instance.trim()
 
   return (
     <Card className="bg-card border-border">
@@ -200,49 +180,6 @@ function WhatsAppCard() {
           Todas as conversas ficam centralizadas no módulo de Mensagens.
         </p>
 
-        {/* ── form ── */}
-        {status === 'disconnected' && (
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-foreground/80 mb-1.5">URL da Evolution API</label>
-              <input
-                value={apiUrl}
-                onChange={e => setApiUrl(e.target.value)}
-                placeholder="https://evolution.suaagencia.com"
-                className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-foreground/80 mb-1.5">API Key</label>
-              <div className="relative">
-                <input
-                  type={showKey ? 'text' : 'password'}
-                  value={apiKey}
-                  onChange={e => setApiKey(e.target.value)}
-                  placeholder="••••••••••••••••"
-                  className="w-full h-9 rounded-lg bg-muted border border-border px-3 pr-9 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-foreground/80 mb-1.5">Nome da instância</label>
-              <input
-                value={instance}
-                onChange={e => setInstance(e.target.value)}
-                placeholder="nexus-agency"
-                className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-              />
-            </div>
-          </div>
-        )}
-
         {/* ── error ── */}
         {qrError && status === 'disconnected' && (
           <div className="rounded-lg bg-red-500/8 border border-red-500/20 p-3 flex items-center gap-2">
@@ -255,7 +192,7 @@ function WhatsAppCard() {
         {status === 'loading_qr' && (
           <div className="flex flex-col items-center gap-3 py-4">
             <Loader2 size={28} className="text-primary animate-spin" />
-            <p className="text-sm text-muted-foreground">Conectando à Evolution API…</p>
+            <p className="text-sm text-muted-foreground">Preparando conexão…</p>
           </div>
         )}
 
@@ -274,7 +211,7 @@ function WhatsAppCard() {
               {expired && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <button
-                    onClick={handleRefreshQr}
+                    onClick={fetchQr}
                     className="flex flex-col items-center gap-1.5 bg-card/90 rounded-xl px-4 py-3 border border-border shadow-lg backdrop-blur-sm"
                   >
                     <RefreshCw size={20} className="text-primary" />
@@ -306,8 +243,8 @@ function WhatsAppCard() {
           <div className="rounded-lg bg-emerald-500/8 border border-emerald-500/20 p-3 flex items-center gap-3">
             <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground">Instância conectada</p>
-              <p className="text-xs text-muted-foreground truncate">{instance || 'nexus-agency'}</p>
+              <p className="text-sm font-medium text-foreground">WhatsApp conectado</p>
+              <p className="text-xs text-muted-foreground truncate">{instance}</p>
             </div>
           </div>
         )}
@@ -346,21 +283,11 @@ function WhatsAppCard() {
             <Button
               size="sm"
               className="h-8 text-xs bg-primary hover:bg-primary/90"
-              disabled={!formValid}
-              onClick={handleGenerateQr}
+              onClick={fetchQr}
             >
-              <Plug size={13} /> Gerar QR Code
+              <Plug size={13} /> Conectar WhatsApp
             </Button>
           ) : null}
-
-          <a
-            href="https://doc.evolution-api.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
-          >
-            Documentação <ExternalLink size={11} />
-          </a>
         </div>
       </CardContent>
     </Card>
