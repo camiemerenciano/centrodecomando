@@ -188,6 +188,9 @@ export function MensagensModule() {
   const [autoReplying, setAutoReplying]           = useState<Record<string, boolean>>({})
   const [pipelineStageMap, setPipelineStageMap]   = useState<Record<string, string>>({})
   const [clientMap, setClientMap]                 = useState<Record<string, Record<string, unknown> | null>>({})
+  const [showNewConv, setShowNewConv]             = useState(false)
+  const [newConvPhone, setNewConvPhone]           = useState('')
+  const [newConvName, setNewConvName]             = useState('')
 
 
   const bottomRef        = useRef<HTMLDivElement>(null)
@@ -663,6 +666,31 @@ export function MensagensModule() {
     setTimeout(() => setShowTaskForm(false), 1600)
   }
 
+  function openNewConv() {
+    setNewConvPhone('')
+    setNewConvName('')
+    setShowNewConv(true)
+  }
+
+  function confirmNewConv() {
+    const digits = newConvPhone.replace(/\D/g, '')
+    if (!digits) return
+    // Garante código do país — assume Brasil (55) se não tiver 12+ dígitos
+    const full = digits.length >= 12 ? digits : `55${digits}`
+    const jid  = `${full}@s.whatsapp.net`
+    const name = newConvName.trim() || `+${full}`
+
+    // Cria a conversa localmente se não existir
+    if (!conversations.find(c => c.id === jid)) {
+      const newConv: ConvItem = {
+        id: jid, name, lastMessage: '', time: 'agora', unread: 0, status: 'open',
+      }
+      setConversations(prev => [newConv, ...prev])
+    }
+    selectConversation(jid)
+    setShowNewConv(false)
+  }
+
   const filtered = conversations.filter(c => {
     const q = search.toLowerCase()
     return (
@@ -788,11 +816,65 @@ export function MensagensModule() {
         </div>
 
         <div className="p-3 border-t border-border">
-          <Button variant="outline" size="sm" className="w-full h-7 text-xs gap-1.5">
+          <Button variant="outline" size="sm" className="w-full h-7 text-xs gap-1.5" onClick={openNewConv}>
             <Plus size={12} /> Nova conversa
           </Button>
         </div>
       </div>
+
+      {/* ── Modal Nova Conversa ── */}
+      {showNewConv && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={e => { if (e.target === e.currentTarget) setShowNewConv(false) }}
+        >
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            <div className="px-5 py-4 flex items-center justify-between border-b border-border">
+              <p className="text-sm font-semibold text-foreground">Nova conversa</p>
+              <button onClick={() => setShowNewConv(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-foreground/80 mb-1.5">Número do WhatsApp</label>
+                <input
+                  autoFocus
+                  value={newConvPhone}
+                  onChange={e => setNewConvPhone(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && confirmNewConv()}
+                  placeholder="(11) 99999-9999"
+                  className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">Com ou sem código do país. Sem código assume Brasil (+55).</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground/80 mb-1.5">Nome (opcional)</label>
+                <input
+                  value={newConvName}
+                  onChange={e => setNewConvName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && confirmNewConv()}
+                  placeholder="Nome do contato"
+                  className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                />
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1 h-8 text-xs bg-primary hover:bg-primary/90"
+                disabled={!newConvPhone.replace(/\D/g, '')}
+                onClick={confirmNewConv}
+              >
+                Abrir conversa
+              </Button>
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowNewConv(false)}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── CENTER: Chat ── */}
       <div className="flex flex-col flex-1 bg-background min-w-0">
