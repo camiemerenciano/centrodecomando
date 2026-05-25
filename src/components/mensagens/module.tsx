@@ -184,6 +184,7 @@ export function MensagensModule() {
   const [isSuggestingReply, setIsSuggestingReply] = useState(false)
   const [gcalToken, setGcalToken]                 = useState<string | null>(null)
   const [userId, setUserId]                       = useState<string | null>(null)
+  const [ownerId, setOwnerId]                     = useState<string | null>(null)
   const [lunnaActiveMap, setLunnaActiveMap]       = useState<Record<string, boolean>>({})
   const [autoReplying, setAutoReplying]           = useState<Record<string, boolean>>({})
   const [pipelineStageMap, setPipelineStageMap]   = useState<Record<string, string>>({})
@@ -215,23 +216,27 @@ export function MensagensModule() {
   // Keep refs in sync
   useEffect(() => { lunnaActiveRef.current   = lunnaActiveMap },   [lunnaActiveMap])
   useEffect(() => { gcalTokenRef.current     = gcalToken },         [gcalToken])
-  useEffect(() => { userIdRef.current        = userId },            [userId])
+  useEffect(() => { userIdRef.current        = ownerId ?? userId }, [ownerId, userId])
   useEffect(() => { evoRef.current           = evo },               [evo])
   useEffect(() => { conversationsRef.current = conversations },     [conversations])
   useEffect(() => { messagesMapRef.current   = messagesMap },       [messagesMap])
 
-  // Load all credentials from Supabase on mount
+  // Load all credentials on mount — uses server route to bypass RLS for team members
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
       setUserId(user.id)
-      const { data } = await supabase
-        .from('integracoes')
-        .select('evo_api_url, evo_api_key, evo_instance, evo_connected_at, gcal_access_token, gcal_refresh_token')
-        .maybeSingle()
+
+      // Server route resolves ownerId and fetches integracoes with admin client (no RLS)
+      const res = await fetch('/api/integracoes/evo')
+      if (!res.ok) return
+      const { data, ownerId: resolvedOwnerId } = await res.json()
+      if (resolvedOwnerId) setOwnerId(resolvedOwnerId)
+
+      if (!data) return
 
       // WhatsApp
-      if (data?.evo_api_url && data?.evo_api_key && data?.evo_instance) {
+      if (data.evo_api_url && data.evo_api_key && data.evo_instance) {
         setEvo({ apiUrl: data.evo_api_url, apiKey: data.evo_api_key, instanceName: data.evo_instance })
         localStorage.setItem('evo_apiUrl',       data.evo_api_url)
         localStorage.setItem('evo_apiKey',       data.evo_api_key)
@@ -240,14 +245,14 @@ export function MensagensModule() {
       }
 
       // Google Calendar — refresh token if available
-      if (data?.gcal_refresh_token) {
+      if (data.gcal_refresh_token) {
         try {
-          const res = await fetch('/api/auth/google/refresh', {
+          const refreshRes = await fetch('/api/auth/google/refresh', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refreshToken: data.gcal_refresh_token }),
           })
-          const refreshed = await res.json()
+          const refreshed = await refreshRes.json()
           if (refreshed.access_token) {
             setGcalToken(refreshed.access_token)
             await supabase.from('integracoes').upsert({
@@ -258,8 +263,7 @@ export function MensagensModule() {
           }
         } catch { /* fallback to stored token */ }
       }
-      if (data?.gcal_access_token) setGcalToken(data.gcal_access_token)
-
+      if (data.gcal_access_token) setGcalToken(data.gcal_access_token)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -275,19 +279,11 @@ export function MensagensModule() {
       })
       const data = await res.json()
       if (!res.ok || !Array.isArray(data)) return
-      const connectedAt = localStorage.getItem('evo_connectedAt')
-      const connectedTs = connectedAt ? new Date(connectedAt).getTime() : 0
       const mapped = data
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((c: any) => {
           const jid: string = c.remoteJid ?? c?.id?.remote ?? c?.id ?? ''
           if (!jid.endsWith('@s.whatsapp.net')) return false
-          if (!c.lastMessage) return false
-          // Só mostrar chats com atividade após a conexão atual do WhatsApp
-          if (connectedTs > 0) {
-            const updatedTs = c.updatedAt ? new Date(c.updatedAt).getTime() : 0
-            if (updatedTs < connectedTs) return false
-          }
           return true
         })
         .map(mapChat)
@@ -527,10 +523,13 @@ export function MensagensModule() {
     const digits = phone.replace(/\D/g, '')
     const short  = digits.slice(-9) // last 9 digits for flexible matching
 
-    supabase
-      .from('clientes')
-      .select('*')
-      .eq('user_id', userId)
+    fetch('/api/team/owner-id')
+      .then(r => r.ok ? r.json() : { ownerId: userId })
+      .then(({ ownerId }) => supabase
+        .from('clientes')
+        .select('*')
+        .eq('user_id', ownerId)
+      )
       .then(({ data }) => {
         if (!data) { setClientMap(p => ({ ...p, [activeId]: null })); return }
         const found = data.find(c => {
@@ -641,7 +640,7 @@ export function MensagensModule() {
             .map(m => ({ from: m.mine ? 'Equipe' : activeConv.name, content: m.content })),
           clientName: activeConv.name,
           gcalToken: gcalToken ?? undefined,
-          userId: userId ?? undefined,
+          userId: ownerId ?? userId ?? undefined,
         }),
       })
       const data = await res.json()

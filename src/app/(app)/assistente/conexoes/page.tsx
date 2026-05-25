@@ -17,25 +17,19 @@ import {
   MessageCircle,
   AlertCircle,
   ExternalLink,
-  Smartphone,
 } from 'lucide-react'
-
-const QR_TTL = 45 // seconds before QR expires
 
 // ── WhatsApp / Evolution ──────────────────────────────────────────────────────
 
-type WaStatus = 'disconnected' | 'loading_qr' | 'awaiting_scan' | 'connected'
+type WaStatus = 'disconnected' | 'saving' | 'connected'
 
 function WhatsAppCard() {
-  const [status, setStatus]     = useState<WaStatus>('disconnected')
-  const [instance, setInstance] = useState('')
-  const [apiUrl, setApiUrl]     = useState('')
-  const [apiKey, setApiKey]     = useState('')
-  const [qrBase64, setQrBase64] = useState('')
-  const [qrCode, setQrCode]     = useState('')
-  const [qrError, setQrError]   = useState('')
-  const [ttl, setTtl]           = useState(QR_TTL)
-  const [expired, setExpired]   = useState(false)
+  const [status, setStatus]       = useState<WaStatus>('disconnected')
+  const [formUrl, setFormUrl]     = useState('')
+  const [formKey, setFormKey]     = useState('')
+  const [formInst, setFormInst]   = useState('')
+  const [instance, setInstance]   = useState('')
+  const [error, setError]         = useState('')
   const supabase = createClient()
 
   async function saveEvoToSupabase(url: string, key: string, inst: string) {
@@ -78,69 +72,37 @@ function WhatsAppCard() {
         .eq('user_id', user.id)
         .maybeSingle()
       if (data?.evo_api_url && data?.evo_api_key && data?.evo_instance) {
-        setApiUrl(data.evo_api_url)
-        setApiKey(data.evo_api_key)
         setInstance(data.evo_instance)
+        setFormUrl(data.evo_api_url)
+        setFormKey(data.evo_api_key)
+        setFormInst(data.evo_instance)
         setStatus('connected')
-        localStorage.setItem('evo_apiUrl',   data.evo_api_url)
-        localStorage.setItem('evo_apiKey',   data.evo_api_key)
-        localStorage.setItem('evo_instance', data.evo_instance)
       }
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Countdown while QR is visible
-  useEffect(() => {
-    if (status !== 'awaiting_scan') return
-    setTtl(QR_TTL)
-    setExpired(false)
-    const interval = setInterval(() => {
-      setTtl(t => {
-        if (t <= 1) { clearInterval(interval); setExpired(true); return 0 }
-        return t - 1
-      })
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [status, qrBase64, qrCode])
-
-  // Poll connection state while showing QR
-  useEffect(() => {
-    if (status !== 'awaiting_scan' || !apiUrl || !apiKey || !instance) return
-    const poll = setInterval(async () => {
-      try {
-        const res  = await fetch('/api/evolution/state', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiUrl, apiKey, instanceName: instance }),
-        })
-        const data = await res.json()
-        if (data?.state === 'open') {
-          await saveEvoToSupabase(apiUrl, apiKey, instance)
-          setStatus('connected')
-        }
-      } catch { /* ignore */ }
-    }, 3000)
-    return () => clearInterval(poll)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, apiUrl, apiKey, instance])
-
-  async function fetchQr() {
-    setQrError('')
-    setStatus('loading_qr')
+  async function handleConnect() {
+    const url  = formUrl.trim().replace(/\/$/, '')
+    const key  = formKey.trim()
+    const inst = formInst.trim()
+    if (!url || !key || !inst) { setError('Preencha todos os campos.'); return }
+    setError('')
+    setStatus('saving')
     try {
-      // Chama a rota automática — usa env vars do servidor, sem precisar de credenciais no frontend
-      const res = await fetch('/api/evolution/auto-qr', { method: 'POST' })
+      // Verifica se a instância existe e está conectada
+      const res  = await fetch('/api/evolution/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiUrl: url, apiKey: key, instanceName: inst }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? `Erro ${res.status}`)
-      setQrBase64(data.qrBase64 ?? '')
-      setQrCode(data.qrCode ?? '')
-      setInstance(data.instanceName ?? '')
-      setApiUrl(data.apiUrl ?? '')
-      setApiKey(data.apiKey ?? '')
-      setStatus('awaiting_scan')
+      await saveEvoToSupabase(url, key, inst)
+      setInstance(inst)
+      setStatus('connected')
     } catch (err: unknown) {
-      setQrError(err instanceof Error ? err.message : 'Erro ao gerar QR Code')
+      setError(err instanceof Error ? err.message : 'Erro ao conectar. Verifique as credenciais.')
       setStatus('disconnected')
     }
   }
@@ -148,13 +110,8 @@ function WhatsAppCard() {
   async function handleDisconnect() {
     await clearEvoFromSupabase()
     setStatus('disconnected')
-    setQrBase64('')
-    setQrCode('')
-    setQrError('')
-    setExpired(false)
     setInstance('')
-    setApiUrl('')
-    setApiKey('')
+    setError('')
   }
 
   return (
@@ -170,7 +127,7 @@ function WhatsAppCard() {
               <p className="text-xs text-muted-foreground mt-0.5">via Evolution API</p>
             </div>
           </div>
-          <StatusBadge status={status === 'loading_qr' || status === 'awaiting_scan' ? 'connecting' : status} />
+          <StatusBadge status={status === 'saving' ? 'connecting' : status} />
         </div>
       </CardHeader>
 
@@ -180,66 +137,14 @@ function WhatsAppCard() {
           Todas as conversas ficam centralizadas no módulo de Mensagens.
         </p>
 
-        {/* ── error ── */}
-        {qrError && status === 'disconnected' && (
+        {error && (
           <div className="rounded-lg bg-red-500/8 border border-red-500/20 p-3 flex items-center gap-2">
             <AlertCircle size={14} className="text-red-400 shrink-0" />
-            <p className="text-xs text-red-400">{qrError}</p>
+            <p className="text-xs text-red-400">{error}</p>
           </div>
         )}
 
-        {/* ── loading QR ── */}
-        {status === 'loading_qr' && (
-          <div className="flex flex-col items-center gap-3 py-4">
-            <Loader2 size={28} className="text-primary animate-spin" />
-            <p className="text-sm text-muted-foreground">Preparando conexão…</p>
-          </div>
-        )}
-
-        {/* ── QR code ── */}
-        {status === 'awaiting_scan' && (
-          <div className="flex flex-col items-center gap-3">
-            <div className="relative">
-              <div className={`rounded-xl p-3 bg-white transition-all ${expired ? 'opacity-30 blur-[2px]' : ''}`}>
-                {qrBase64 ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={qrBase64} alt="QR Code WhatsApp" width={164} height={164} className="block" />
-                ) : (
-                  <QRCodeSVG value={qrCode} size={164} bgColor="#ffffff" fgColor="#111111" level="M" />
-                )}
-              </div>
-              {expired && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <button
-                    onClick={fetchQr}
-                    className="flex flex-col items-center gap-1.5 bg-card/90 rounded-xl px-4 py-3 border border-border shadow-lg backdrop-blur-sm"
-                  >
-                    <RefreshCw size={20} className="text-primary" />
-                    <span className="text-xs font-medium text-foreground">QR expirado</span>
-                    <span className="text-[10px] text-muted-foreground">Clique para gerar novo</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {!expired && (
-              <div className="text-center space-y-1">
-                <div className="flex items-center gap-1.5 justify-center">
-                  <Smartphone size={12} className="text-muted-foreground" />
-                  <p className="text-xs text-muted-foreground">
-                    Abra o WhatsApp → <span className="text-foreground font-medium">Dispositivos conectados</span> → Conectar
-                  </p>
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  QR expira em <span className={`font-semibold ${ttl <= 10 ? 'text-red-400' : 'text-foreground'}`}>{ttl}s</span>
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── connected ── */}
-        {status === 'connected' && (
+        {status === 'connected' ? (
           <div className="rounded-lg bg-emerald-500/8 border border-emerald-500/20 p-3 flex items-center gap-3">
             <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -247,47 +152,63 @@ function WhatsAppCard() {
               <p className="text-xs text-muted-foreground truncate">{instance}</p>
             </div>
           </div>
+        ) : (
+          <div className="space-y-2.5">
+            <div>
+              <label className="block text-xs font-medium text-foreground/80 mb-1">URL da API</label>
+              <input
+                value={formUrl}
+                onChange={e => setFormUrl(e.target.value)}
+                placeholder="https://sua-evolution.com"
+                className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground/80 mb-1">API Key</label>
+              <input
+                value={formKey}
+                onChange={e => setFormKey(e.target.value)}
+                placeholder="sua-api-key"
+                type="password"
+                className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground/80 mb-1">Nome da instância</label>
+              <input
+                value={formInst}
+                onChange={e => setFormInst(e.target.value)}
+                placeholder="minha-instancia"
+                onKeyDown={e => e.key === 'Enter' && handleConnect()}
+                className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+              />
+            </div>
+          </div>
         )}
 
-        {/* ── actions ── */}
         <div className="flex items-center gap-2 pt-1">
           {status === 'connected' ? (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs border-border"
-                onClick={fetchQr}
-              >
-                <RefreshCw size={13} /> Reconectar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
-                onClick={handleDisconnect}
-              >
-                <Unplug size={13} /> Desconectar
-              </Button>
-            </>
-          ) : status === 'awaiting_scan' ? (
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs border-border"
+              className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
               onClick={handleDisconnect}
             >
-              Cancelar
+              <Unplug size={13} /> Desconectar
             </Button>
-          ) : status === 'disconnected' ? (
+          ) : (
             <Button
               size="sm"
               className="h-8 text-xs bg-primary hover:bg-primary/90"
-              onClick={fetchQr}
+              disabled={status === 'saving'}
+              onClick={handleConnect}
             >
-              <Plug size={13} /> Conectar WhatsApp
+              {status === 'saving'
+                ? <><Loader2 size={13} className="animate-spin" /> Conectando…</>
+                : <><Plug size={13} /> Conectar</>
+              }
             </Button>
-          ) : null}
+          )}
         </div>
       </CardContent>
     </Card>

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import OpenAI from 'openai'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+export const maxDuration = 30 // seconds — keeps the function alive for after()
+
 // In-memory dedup — prevents double-reply if Evolution fires webhook twice
 const processedIds = new Set<string>()
 
@@ -365,8 +367,8 @@ export async function POST(request: NextRequest) {
       const reply = response.choices[0]?.message?.content?.trim()
       if (!reply) return
 
-      // Simulate human typing delay
-      await new Promise(resolve => setTimeout(resolve, 35_000))
+      // Simulate human typing delay (keep short to avoid Vercel function timeout)
+      await new Promise(resolve => setTimeout(resolve, 4_000))
 
       await fetch(`${base}/message/sendText/${instanceName}`, {
         method: 'POST',

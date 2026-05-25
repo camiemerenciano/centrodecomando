@@ -25,7 +25,7 @@ async function tryConnect(base: string, instanceName: string, headers: Record<st
   return null
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const apiUrl = process.env.EVOLUTION_API_URL
   const apiKey = process.env.EVOLUTION_API_KEY
 
@@ -42,10 +42,19 @@ export async function POST() {
   const headers = { 'Content-Type': 'application/json', apikey: apiKey }
 
   try {
-    // Monta a URL do webhook para esta instalação
-    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace('http://localhost:3000', '')
-      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '')
+    // Deriva a URL do app a partir do header da requisição — funciona em qualquer ambiente
+    const host  = (request as Request & { headers: Headers }).headers.get('host') ?? ''
+    const proto = (request as Request & { headers: Headers }).headers.get('x-forwarded-proto') ?? 'https'
+    const appUrl = host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_APP_URL ?? '')
     const webhookUrl = appUrl ? `${appUrl}/api/evolution/webhook` : null
+
+    const webhookBody = webhookUrl ? {
+      enabled: true,
+      url: webhookUrl,
+      webhookByEvents: false,
+      webhookBase64: false,
+      events: ['MESSAGES_UPSERT', 'SEND_MESSAGE', 'CONNECTION_UPDATE'],
+    } : null
 
     // 1. Cria a instância (ignora se já existir) e já configura o webhook
     await fetch(`${base}/instance/create`, {
@@ -55,28 +64,16 @@ export async function POST() {
         instanceName,
         qrcode: true,
         integration: 'WHATSAPP-BAILEYS',
-        ...(webhookUrl ? {
-          webhook: {
-            url: webhookUrl,
-            byEvents: true,
-            base64: false,
-            events: ['MESSAGES_UPSERT'],
-          },
-        } : {}),
+        ...(webhookBody ? { webhook: webhookBody } : {}),
       }),
     }).catch(() => null)
 
     // Configura/atualiza webhook na instância existente também
-    if (webhookUrl) {
+    if (webhookBody) {
       await fetch(`${base}/webhook/set/${instanceName}`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          url: webhookUrl,
-          byEvents: true,
-          base64: false,
-          events: ['MESSAGES_UPSERT'],
-        }),
+        body: JSON.stringify(webhookBody),
       }).catch(() => null)
     }
 
