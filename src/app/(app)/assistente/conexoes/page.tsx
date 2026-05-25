@@ -453,7 +453,13 @@ function GoogleCalendarCard() {
   async function clearFromSupabase() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    await supabase.from('integracoes').delete().eq('user_id', user.id)
+    await supabase.from('integracoes').update({
+      gcal_access_token:  null,
+      gcal_refresh_token: null,
+      gcal_email:         null,
+      gcal_name:          null,
+      gcal_connected_at:  null,
+    }).eq('user_id', user.id)
   }
 
   function openOAuthPopup() {
