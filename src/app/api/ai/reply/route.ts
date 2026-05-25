@@ -86,8 +86,8 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: {
         type: 'object',
         properties: {
-          data_inicio:  { type: 'string' },
-          data_fim:     { type: 'string' },
+          data_inicio:  { type: 'string', description: 'ISO 8601. Ex: 2025-06-10T14:00:00-03:00' },
+          data_fim:     { type: 'string', description: 'ISO 8601. Ex: 2025-06-10T15:00:00-03:00' },
           nome_cliente: { type: 'string' },
           nome_empresa: { type: 'string' },
           telefone:     { type: 'string' },
@@ -103,107 +103,116 @@ async function runCalendarTool(
   name: string,
   args: Record<string, string>,
   gcalToken: string,
-  baseUrl: string
 ): Promise<string> {
-  if (name === 'consultar_disponibilidade') {
-    const url = new URL(`${baseUrl}/api/calendar/events`)
-    url.searchParams.set('timeMin', args.data_inicio)
-    url.searchParams.set('timeMax', args.data_fim)
-    const res  = await fetch(url.toString(), { headers: { Authorization: `Bearer ${gcalToken}` } })
-    const data = await res.json()
-    const events = data.items ?? []
-    if (events.length === 0) return 'horário disponível'
-    return `horário ocupado: ${events.map((e: { summary?: string }) => e.summary ?? 'evento').join(', ')}`
-  }
-
-  if (name === 'criar_evento') {
-    const body = {
-      summary:     `Call — ${args.nome_cliente} (${args.nome_empresa})`,
-      description: `Objetivo: ${args.objetivo}\nTelefone: ${args.telefone}`,
-      start: { dateTime: args.data_inicio, timeZone: 'America/Sao_Paulo' },
-      end:   { dateTime: args.data_fim,    timeZone: 'America/Sao_Paulo' },
+  try {
+    if (name === 'consultar_disponibilidade') {
+      const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
+      url.searchParams.set('timeMin', args.data_inicio)
+      url.searchParams.set('timeMax', args.data_fim)
+      url.searchParams.set('singleEvents', 'true')
+      url.searchParams.set('orderBy', 'startTime')
+      url.searchParams.set('maxResults', '10')
+      const res    = await fetch(url.toString(), { headers: { Authorization: `Bearer ${gcalToken}` } })
+      const data   = await res.json()
+      if (!res.ok) return `erro ao consultar agenda: ${data?.error?.message ?? res.status}`
+      const events = data.items ?? []
+      if (events.length === 0) return 'horário disponível'
+      return `horário ocupado: ${events.map((e: { summary?: string }) => e.summary ?? 'evento').join(', ')}`
     }
-    const res  = await fetch(`${baseUrl}/api/calendar/criar-evento`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${gcalToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const data = await res.json()
-    if (!res.ok) return `erro ao criar evento: ${JSON.stringify(data.error)}`
-    return `evento criado: ${data.summary} em ${data.start?.dateTime}`
+
+    if (name === 'criar_evento') {
+      const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${gcalToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          summary:     `Call — ${args.nome_cliente} (${args.nome_empresa})`,
+          description: `Objetivo: ${args.objetivo}\nTelefone: ${args.telefone}`,
+          start: { dateTime: args.data_inicio, timeZone: 'America/Sao_Paulo' },
+          end:   { dateTime: args.data_fim,    timeZone: 'America/Sao_Paulo' },
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) return `erro ao criar evento: ${data?.error?.message ?? res.status}`
+      return `evento criado com sucesso: ${data.summary} em ${data.start?.dateTime}`
+    }
+  } catch (err) {
+    return `erro na ferramenta: ${err instanceof Error ? err.message : String(err)}`
   }
 
   return 'tool desconhecida'
 }
 
 export async function POST(request: Request) {
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ error: 'OPENAI_API_KEY não configurado' }, { status: 503 })
-  }
-
-  const { messages, clientName, gcalToken, userId } = await request.json()
-
-  if (!messages?.length) {
-    return NextResponse.json({ error: 'Nenhuma mensagem fornecida' }, { status: 400 })
-  }
-
-  // Fetch user's AI config + areas from Supabase
-  let systemPrompt = FALLBACK_PROMPT
-  if (userId) {
-    try {
-      const admin = createAdminClient()
-      const [{ data }, { data: { user: authUser } }] = await Promise.all([
-        admin.from('ai_config').select('*').eq('user_id', userId).maybeSingle(),
-        admin.auth.admin.getUserById(userId),
-      ])
-      const areas: string[] = Array.isArray(authUser?.user_metadata?.areas_de_atuacao)
-        ? (authUser!.user_metadata!.areas_de_atuacao as string[])
-        : []
-      if (data) systemPrompt = buildSystemPrompt(data as AiConfig, areas, !!gcalToken)
-    } catch { /* use fallback */ }
-  }
-
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
-  const chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: 'system', content: systemPrompt },
-    ...( messages as { from: string; content: string }[] ).map(m => ({
-      role: (['Equipe', 'Lunna'].includes(m.from) ? 'assistant' : 'user') as 'assistant' | 'user',
-      content: m.content,
-    })),
-  ]
-
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://centrodecomando-two.vercel.app'
-  const useTools = !!gcalToken
-
-  let response = await client.chat.completions.create({
-    model: 'gpt-4o',
-    temperature: 0.75,
-    max_tokens: 400,
-    messages: chatMessages,
-    ...(useTools ? { tools, tool_choice: 'auto' } : {}),
-  })
-
-  while (response.choices[0]?.finish_reason === 'tool_calls') {
-    const assistantMsg = response.choices[0].message
-    chatMessages.push(assistantMsg)
-    const toolCalls = assistantMsg.tool_calls ?? []
-    for (const tc of toolCalls) {
-      if (tc.type !== 'function') continue
-      const args   = JSON.parse(tc.function.arguments) as Record<string, string>
-      const result = await runCalendarTool(tc.function.name, args, gcalToken, baseUrl)
-      chatMessages.push({ role: 'tool', tool_call_id: tc.id, content: result })
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json({ error: 'OPENAI_API_KEY não configurado' }, { status: 503 })
     }
-    response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0.3,
-      max_tokens: 300,
-      messages: chatMessages,
-      tools,
-      tool_choice: 'auto',
-    })
-  }
 
-  const reply = response.choices[0]?.message?.content?.trim() ?? ''
-  return NextResponse.json({ reply })
+    const { messages, clientName: _clientName, gcalToken, userId } = await request.json()
+
+    if (!messages?.length) {
+      return NextResponse.json({ error: 'Nenhuma mensagem fornecida' }, { status: 400 })
+    }
+
+    // Fetch user's AI config + areas from Supabase
+    let systemPrompt = FALLBACK_PROMPT
+    if (userId) {
+      try {
+        const admin = createAdminClient()
+        const [{ data }, { data: { user: authUser } }] = await Promise.all([
+          admin.from('ai_config').select('*').eq('user_id', userId).maybeSingle(),
+          admin.auth.admin.getUserById(userId),
+        ])
+        const areas: string[] = Array.isArray(authUser?.user_metadata?.areas_de_atuacao)
+          ? (authUser!.user_metadata!.areas_de_atuacao as string[])
+          : []
+        if (data) systemPrompt = buildSystemPrompt(data as AiConfig, areas, !!gcalToken)
+      } catch { /* use fallback */ }
+    }
+
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+    const useTools = !!gcalToken
+
+    const chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      ...(messages as { from: string; content: string }[]).map(m => ({
+        role: (['Equipe', 'Lunna'].includes(m.from) ? 'assistant' : 'user') as 'assistant' | 'user',
+        content: m.content,
+      })),
+    ]
+
+    let response = await openai.chat.completions.create({
+      model:       'gpt-4o',
+      temperature: 0.75,
+      max_tokens:  400,
+      messages:    chatMessages,
+      ...(useTools ? { tools, tool_choice: 'auto' } : {}),
+    })
+
+    while (response.choices[0]?.finish_reason === 'tool_calls') {
+      const assistantMsg = response.choices[0].message
+      chatMessages.push(assistantMsg)
+      for (const tc of assistantMsg.tool_calls ?? []) {
+        if (tc.type !== 'function') continue
+        const args   = JSON.parse(tc.function.arguments) as Record<string, string>
+        const result = await runCalendarTool(tc.function.name, args, gcalToken as string)
+        chatMessages.push({ role: 'tool', tool_call_id: tc.id, content: result })
+      }
+      response = await openai.chat.completions.create({
+        model:       'gpt-4o',
+        temperature: 0.75,
+        max_tokens:  400,
+        messages:    chatMessages,
+        tools,
+        tool_choice: 'auto',
+      })
+    }
+
+    const reply = response.choices[0]?.message?.content?.trim() ?? ''
+    return NextResponse.json({ reply })
+
+  } catch (err) {
+    console.error('[ai/reply]', err)
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
+  }
 }
