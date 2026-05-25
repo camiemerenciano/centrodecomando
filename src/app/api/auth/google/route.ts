@@ -12,9 +12,9 @@ export async function GET(request: NextRequest) {
     client_id:     clientId,
     redirect_uri:  redirectUri,
     response_type: 'code',
-    scope:         'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+    scope:         'openid email profile https://www.googleapis.com/auth/calendar.events',
     access_type:   'offline',
-    prompt:        'select_account',
+    prompt:        'consent',
   })
 
   return NextResponse.redirect(
