@@ -106,12 +106,65 @@ export default function DashboardPage() {
 
   const fetchMsgStats = useCallback(async () => {
     try {
-      const res = await fetch('/api/dashboard/messages')
-      if (res.ok) {
-        const data = await res.json()
-        setMsgStats(data)
-        setLastSync(new Date())
+      const intRes = await fetch('/api/integracoes/evo')
+      if (!intRes.ok) return
+      const { data: evo } = await intRes.json()
+      if (!evo?.evo_api_url || !evo?.evo_api_key || !evo?.evo_instance) {
+        setMsgStats(s => ({ ...s, connected: false }))
+        return
       }
+
+      const chatsRes = await fetch('/api/evolution/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiUrl: evo.evo_api_url, apiKey: evo.evo_api_key, instanceName: evo.evo_instance }),
+      })
+      if (!chatsRes.ok) { setMsgStats(s => ({ ...s, connected: true })); return }
+
+      const chats = await chatsRes.json()
+      if (!Array.isArray(chats)) { setMsgStats(s => ({ ...s, connected: true })); return }
+
+      const connectedTs = evo.evo_connected_at ? new Date(evo.evo_connected_at).getTime() : 0
+      const nowSec = Date.now() / 1000
+      const dayAgo = nowSec - 86400
+      let naoLidas = 0, semResposta = 0, novas = 0
+      const tempos: number[] = []
+
+      // handles number (unix secs), string, or protobuf { low, high } object → returns ms
+      const toMs = (raw: unknown): number => {
+        if (!raw) return 0
+        if (typeof raw === 'number') return raw * 1000
+        if (typeof raw === 'string') return (parseInt(raw, 10) || 0) * 1000
+        const o = raw as Record<string, number>
+        if (typeof o?.low === 'number') return (o.low + (o.high ?? 0) * 2 ** 32) * 1000
+        return 0
+      }
+
+      for (const chat of chats) {
+        const jid = (chat?.remoteJid ?? chat?.id?.remote ?? chat?.id ?? '') as string
+        if (!jid.endsWith('@s.whatsapp.net')) continue
+
+        const msgTs     = toMs(chat?.lastMessage?.messageTimestamp)
+        const updatedTs = chat.updatedAt ? new Date(chat.updatedAt).getTime() : 0
+        const lastActivity = Math.max(updatedTs, msgTs)
+
+        if (connectedTs > 0 && lastActivity < connectedTs) continue
+
+        naoLidas += (chat?.unreadCount ?? 0)
+
+        const fromMe = chat?.lastMessage?.key?.fromMe ?? true
+        if (!fromMe) {
+          semResposta++
+          const lastSec = lastActivity / 1000
+          if (lastSec > 0) tempos.push((nowSec - lastSec) / 3600)
+        }
+
+        if (lastActivity > 0 && lastActivity / 1000 > dayAgo) novas++
+      }
+
+      const tempoMedio = tempos.length > 0 ? tempos.reduce((a, b) => a + b, 0) / tempos.length : null
+      setMsgStats({ connected: true, naoLidas, semResposta, novas, tempoMedio })
+      setLastSync(new Date())
     } catch { /* silently ignore */ }
   }, [])
 
