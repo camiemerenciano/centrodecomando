@@ -330,6 +330,13 @@ export function MensagensModule() {
     if (evo) fetchChats(evo)
   }, [evo, fetchChats])
 
+  // Refresh chat list every 15s to pick up new conversations from webhook replies
+  useEffect(() => {
+    if (!evo) return
+    const interval = setInterval(() => fetchChats(evo), 15_000)
+    return () => clearInterval(interval)
+  }, [evo, fetchChats])
+
   // Fetch messages whenever active conversation changes
   useEffect(() => {
     if (!evo || !activeId) return

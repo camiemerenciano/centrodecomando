@@ -198,14 +198,18 @@ export default function CalendarioPage() {
     d.getDate()     === today.getDate()
   )
 
-  // Load Google token on mount — server route uses admin client to bypass RLS
+  // Load Google token on mount — always uses the current user's own calendar
   useEffect(() => {
     const supabase = createClient()
-    fetch('/api/integracoes/evo').then(async r => {
-      if (!r.ok) return
-      const { data } = await r.json()
-      if (!data?.gcal_email) return
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data } = await supabase
+        .from('integracoes')
+        .select('gcal_access_token, gcal_refresh_token, gcal_email')
+        .eq('user_id', user.id)
+        .maybeSingle()
 
+      if (!data?.gcal_email) return
       let token = data.gcal_access_token as string | null
 
       if (data.gcal_refresh_token) {
@@ -218,13 +222,10 @@ export default function CalendarioPage() {
           const refreshed = await res.json()
           if (refreshed.access_token) {
             token = refreshed.access_token as string
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user) {
-              await supabase.from('integracoes').upsert(
-                { user_id: user.id, gcal_access_token: token },
-                { onConflict: 'user_id' }
-              )
-            }
+            await supabase.from('integracoes').upsert(
+              { user_id: user.id, gcal_access_token: token },
+              { onConflict: 'user_id' }
+            )
           }
         } catch { /* use stored token */ }
       }

@@ -37,13 +37,18 @@ function buildSystemPrompt(c: AiConfig, areas: string[], hasCalendar = false): s
   if (c.exemplos.length) parts.push(`\n\nexemplos de como você escreve:\n${c.exemplos.map(e => `- "${e}"`).join('\n')}`)
 
   if (hasCalendar) {
-    parts.push(`\n\nagendamento de reuniões (você tem acesso ao Google Agenda):
+    const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    parts.push(`\n\nDATA E HORA ATUAL (Brasília): ${now}
+
+agendamento de reuniões (você tem acesso ao Google Agenda):
 - quando o cliente demonstrar interesse em uma call ou reunião, conduza ativamente para o agendamento
+- use a data atual acima para calcular datas relativas como "quinta", "amanhã", "semana que vem" — converta SEMPRE para ISO 8601 com fuso -03:00
 - antes de propor qualquer horário, use consultar_disponibilidade para verificar se está livre
 - proponha 2 ou 3 opções de horários disponíveis de forma natural, sem listas
 - quando o cliente confirmar um horário, colete (se ainda não tiver): nome completo, nome da empresa, telefone e objetivo da reunião
-- com todos os dados em mãos, chame criar_evento para registrar no Google Agenda
-- após criar, confirme o agendamento de forma natural e tranquila, sem exagerar
+- com TODOS os dados em mãos, chame criar_evento OBRIGATORIAMENTE — nunca confirme o agendamento sem ter chamado a ferramenta primeiro
+- se criar_evento retornar erro, diga ao cliente que houve um problema e peça para ele confirmar por outro canal
+- após criar_evento retornar sucesso, confirme o agendamento de forma natural e tranquila
 - calls duram 1 hora por padrão, a menos que o cliente diga diferente`)
   }
 
