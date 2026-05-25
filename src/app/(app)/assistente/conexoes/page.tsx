@@ -42,9 +42,10 @@ function WhatsAppCard() {
       evo_instance:     inst,
       evo_connected_at: new Date().toISOString(),
     }, { onConflict: 'user_id' })
-    localStorage.setItem('evo_apiUrl',   url)
-    localStorage.setItem('evo_apiKey',   key)
-    localStorage.setItem('evo_instance', inst)
+    localStorage.setItem('evo_apiUrl',      url)
+    localStorage.setItem('evo_apiKey',      key)
+    localStorage.setItem('evo_instance',    inst)
+    localStorage.setItem('evo_connectedAt', new Date().toISOString())
   }
 
   async function clearEvoFromSupabase() {

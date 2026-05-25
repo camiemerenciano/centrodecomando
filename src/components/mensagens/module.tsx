@@ -279,11 +279,24 @@ export function MensagensModule() {
       })
       const data = await res.json()
       if (!res.ok || !Array.isArray(data)) return
+      const connectedAt = localStorage.getItem('evo_connectedAt')
+      const connectedTs = connectedAt ? new Date(connectedAt).getTime() : 0
       const mapped = data
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((c: any) => {
           const jid: string = c.remoteJid ?? c?.id?.remote ?? c?.id ?? ''
           if (!jid.endsWith('@s.whatsapp.net')) return false
+          if (connectedTs > 0) {
+            const updatedTs = c.updatedAt ? new Date(c.updatedAt).getTime() : 0
+            const msgTs = c.lastMessage?.messageTimestamp
+              ? (typeof c.lastMessage.messageTimestamp === 'number'
+                  ? c.lastMessage.messageTimestamp * 1000
+                  : new Date(c.lastMessage.messageTimestamp).getTime())
+              : 0
+            const lastActivity = Math.max(updatedTs, msgTs)
+            // só mostra se tiver atividade confirmada após a conexão
+            if (lastActivity < connectedTs) return false
+          }
           return true
         })
         .map(mapChat)
