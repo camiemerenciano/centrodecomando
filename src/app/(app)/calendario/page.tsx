@@ -188,6 +188,7 @@ export default function CalendarioPage() {
   const [localEvents, setLocalEvents]   = useState<CalEvent[]>(staticEvents)
   const [editingEvent, setEditingEvent] = useState<CalEvent | null>(null)
   const [editForm, setEditForm]         = useState<EditForm | null>(null)
+  const [savingEvent, setSavingEvent]   = useState(false)
 
   const weekDays = getWeekDays(weekOffset)
   const today    = new Date()
@@ -314,23 +315,72 @@ export default function CalendarioPage() {
     })
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     if (!editingEvent || !editForm) return
-    const updated: CalEvent = {
-      ...editingEvent,
-      title:  editForm.title,
-      client: editForm.client,
-      type:   editForm.type,
-      day:    editForm.dayIdx,
-      startH: fromTimeStr(editForm.startH),
-      endH:   fromTimeStr(editForm.endH),
-      color:  eventBgColor[editForm.type],
-    }
-    if (editForm.isNew) {
-      setLocalEvents(prev => [...prev, { ...updated, id: `local-${Date.now()}` }])
+
+    if (editForm.isNew && gcalToken) {
+      // Criar no Google Calendar
+      setSavingEvent(true)
+      try {
+        const day = weekDays[editForm.dayIdx]
+        const [startHH, startMM] = editForm.startH.split(':')
+        const [endHH,   endMM  ] = editForm.endH.split(':')
+        const pad = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+        const dateStr = pad(day)
+
+        const body = {
+          summary:     editForm.title,
+          description: editForm.client || undefined,
+          start: { dateTime: `${dateStr}T${startHH}:${startMM}:00`, timeZone: 'America/Sao_Paulo' },
+          end:   { dateTime: `${dateStr}T${endHH}:${endMM}:00`,   timeZone: 'America/Sao_Paulo' },
+        }
+
+        const res = await fetch('/api/calendar/criar-evento', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${gcalToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+
+        if (res.ok) {
+          await fetchGoogleEvents(gcalToken, weekDays)
+        } else {
+          const err = await res.json()
+          setGcalError(`Erro ao criar evento: ${err?.error?.message ?? res.status}`)
+        }
+      } catch (e) {
+        setGcalError(`Erro ao criar evento: ${e instanceof Error ? e.message : String(e)}`)
+      } finally {
+        setSavingEvent(false)
+      }
+    } else if (editForm.isNew) {
+      // Sem token: salvar localmente
+      const updated: CalEvent = {
+        ...editingEvent,
+        title:  editForm.title,
+        client: editForm.client,
+        type:   editForm.type,
+        day:    editForm.dayIdx,
+        startH: fromTimeStr(editForm.startH),
+        endH:   fromTimeStr(editForm.endH),
+        color:  eventBgColor[editForm.type],
+        id:     `local-${Date.now()}`,
+      }
+      setLocalEvents(prev => [...prev, updated])
     } else {
+      // Editar evento local
+      const updated: CalEvent = {
+        ...editingEvent,
+        title:  editForm.title,
+        client: editForm.client,
+        type:   editForm.type,
+        day:    editForm.dayIdx,
+        startH: fromTimeStr(editForm.startH),
+        endH:   fromTimeStr(editForm.endH),
+        color:  eventBgColor[editForm.type],
+      }
       setLocalEvents(prev => prev.map(e => e.id === editingEvent.id ? updated : e))
     }
+
     setEditingEvent(null)
     setEditForm(null)
   }
@@ -700,9 +750,14 @@ export default function CalendarioPage() {
                 size="sm"
                 className="h-8 text-xs bg-primary hover:bg-primary/90 flex-1"
                 onClick={saveEdit}
-                disabled={!editForm.title.trim()}
+                disabled={!editForm.title.trim() || savingEvent}
               >
-                {editForm.isNew ? 'Criar evento' : 'Salvar alterações'}
+                {savingEvent
+                  ? <><Loader2 size={12} className="animate-spin mr-1" /> Salvando...</>
+                  : editForm.isNew
+                    ? gcalToken ? 'Criar no Google Agenda' : 'Criar evento'
+                    : 'Salvar alterações'
+                }
               </Button>
               <Button
                 variant="outline"
