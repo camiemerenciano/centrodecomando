@@ -206,7 +206,6 @@ export default function CalendarioPage() {
       const { data } = await supabase
         .from('integracoes')
         .select('gcal_access_token, gcal_refresh_token, gcal_email')
-        .eq('user_id', user.id)
         .maybeSingle()
 
       if (!data?.gcal_email) return

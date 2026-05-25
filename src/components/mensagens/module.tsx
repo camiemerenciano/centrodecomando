@@ -228,7 +228,6 @@ export function MensagensModule() {
       const { data } = await supabase
         .from('integracoes')
         .select('evo_api_url, evo_api_key, evo_instance, evo_connected_at, gcal_access_token, gcal_refresh_token')
-        .eq('user_id', user.id)
         .maybeSingle()
 
       // WhatsApp
