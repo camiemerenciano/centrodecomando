@@ -1,17 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { resolveOwnerId } from '@/lib/team'
 
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const ownerId = await resolveOwnerId(user.id)
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('pipeline_leads')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', ownerId)
     .order('created_at', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -23,11 +25,12 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const ownerId = await resolveOwnerId(user.id)
   const body = await request.json()
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('pipeline_leads')
-    .insert({ ...body, user_id: user.id })
+    .insert({ ...body, user_id: ownerId })
     .select()
     .single()
 
@@ -44,12 +47,13 @@ export async function PATCH(request: Request) {
   const { remote_jid, ...fields } = await request.json() as { remote_jid: string; [k: string]: unknown }
   if (!remote_jid) return NextResponse.json({ error: 'remote_jid required' }, { status: 400 })
 
+  const ownerId = await resolveOwnerId(user.id)
   const admin = createAdminClient()
 
   const { data: existing } = await admin
     .from('pipeline_leads')
     .select('id')
-    .eq('user_id', user.id)
+    .eq('user_id', ownerId)
     .eq('remote_jid', remote_jid)
     .maybeSingle()
 
@@ -63,7 +67,7 @@ export async function PATCH(request: Request) {
     const phone = remote_jid.split('@')[0] ?? remote_jid
     const { error } = await admin
       .from('pipeline_leads')
-      .insert({ user_id: user.id, remote_jid, title: `+${phone}`, client: `+${phone}`, stage: 'recepcao', priority: 'medium', ...fields })
+      .insert({ user_id: ownerId, remote_jid, title: `+${phone}`, client: `+${phone}`, stage: 'recepcao', priority: 'medium', ...fields })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   }
 

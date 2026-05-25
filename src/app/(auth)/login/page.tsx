@@ -38,6 +38,9 @@ export default function LoginPage() {
       return
     }
 
+    // Ativa vínculo de equipe se houver convite pendente
+    await fetch('/api/team/activate', { method: 'POST' })
+
     const { data: perfil } = await supabase
       .from('perfis')
       .select('role')
