@@ -45,10 +45,10 @@ agendamento de reuniões (você tem acesso ao Google Agenda):
 - use a data atual acima para calcular datas relativas como "quinta", "amanhã", "semana que vem" — converta SEMPRE para ISO 8601 com fuso -03:00
 - antes de propor qualquer horário, use consultar_disponibilidade para verificar se está livre
 - proponha 2 ou 3 opções de horários disponíveis de forma natural, sem listas
-- quando o cliente confirmar um horário, colete (se ainda não tiver): nome completo, nome da empresa, telefone e objetivo da reunião
-- com TODOS os dados em mãos, chame criar_evento OBRIGATORIAMENTE — nunca confirme o agendamento sem ter chamado a ferramenta primeiro
+- quando o cliente confirmar um horário, colete (se ainda não tiver): nome completo, nome da empresa, telefone, e-mail e objetivo da reunião
+- com TODOS os dados em mãos (incluindo e-mail), chame criar_evento OBRIGATORIAMENTE — nunca confirme o agendamento sem ter chamado a ferramenta primeiro
 - se criar_evento retornar erro, diga ao cliente que houve um problema e peça para ele confirmar por outro canal
-- após criar_evento retornar sucesso, confirme o agendamento E envie o link meet que veio no retorno — ex: "call marcada! aqui está o link da reunião: https://meet.google.com/xxx"
+- após criar_evento retornar sucesso, envie UMA única mensagem confirmando o agendamento com o link meet — ex: "call marcada! aqui está o link da reunião: https://meet.google.com/xxx. até lá!" — nunca use markdown, nunca repita o link em outra mensagem
 - calls duram 1 hora por padrão, a menos que o cliente diga diferente`)
   }
 
@@ -279,14 +279,15 @@ export async function POST(request: NextRequest) {
             parameters: {
               type: 'object',
               properties: {
-                data_inicio:  { type: 'string' },
-                data_fim:     { type: 'string' },
-                nome_cliente: { type: 'string' },
-                nome_empresa: { type: 'string' },
-                telefone:     { type: 'string' },
-                objetivo:     { type: 'string' },
+                data_inicio:   { type: 'string' },
+                data_fim:      { type: 'string' },
+                nome_cliente:  { type: 'string' },
+                nome_empresa:  { type: 'string' },
+                telefone:      { type: 'string' },
+                objetivo:      { type: 'string' },
+                email_cliente: { type: 'string', description: 'E-mail do cliente para enviar o convite do Google Calendar' },
               },
-              required: ['data_inicio', 'data_fim', 'nome_cliente', 'nome_empresa', 'telefone', 'objetivo'],
+              required: ['data_inicio', 'data_fim', 'nome_cliente', 'nome_empresa', 'telefone', 'objetivo', 'email_cliente'],
             },
           },
         },
@@ -316,7 +317,7 @@ export async function POST(request: NextRequest) {
         }
         if (name === 'criar_evento') {
           const res = await fetch(
-            'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1',
+            'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all',
             {
               method: 'POST',
               headers: { Authorization: `Bearer ${gcalToken}`, 'Content-Type': 'application/json' },
@@ -325,6 +326,7 @@ export async function POST(request: NextRequest) {
                 description: `Objetivo: ${args.objetivo}\nTelefone: ${args.telefone}`,
                 start: { dateTime: args.data_inicio, timeZone: 'America/Sao_Paulo' },
                 end:   { dateTime: args.data_fim,    timeZone: 'America/Sao_Paulo' },
+                attendees: [{ email: args.email_cliente, displayName: args.nome_cliente }],
                 conferenceData: {
                   createRequest: {
                     requestId: `orbit-${Date.now()}`,
@@ -337,7 +339,7 @@ export async function POST(request: NextRequest) {
           const d = await res.json()
           if (!res.ok) return `erro ao criar evento: ${JSON.stringify(d.error)}`
           const meetLink = d.conferenceData?.entryPoints?.find((e: { entryPointType: string; uri: string }) => e.entryPointType === 'video')?.uri ?? ''
-          return `evento criado: ${d.summary} em ${d.start?.dateTime}. link meet: ${meetLink}`
+          return `evento criado: ${d.summary} em ${d.start?.dateTime}. link meet: ${meetLink}. convite enviado para ${args.email_cliente}`
         }
         return 'tool desconhecida'
       }

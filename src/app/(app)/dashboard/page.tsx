@@ -91,9 +91,9 @@ export default function DashboardPage() {
     if (!user) return
 
     const [{ data: c }, { data: l }, { data: t }] = await Promise.all([
-      supabase.from('clientes').select('status, mrr'),
-      supabase.from('pipeline_leads').select('stage'),
-      supabase.from('tarefas').select('id, title, client, priority, status, due_date'),
+      supabase.from('clientes').select('status, mrr').eq('user_id', user.id),
+      supabase.from('pipeline_leads').select('stage').eq('user_id', user.id),
+      supabase.from('tarefas').select('id, title, client, priority, status, due_date').eq('user_id', user.id),
     ])
 
     if (c) setClientes(c)
@@ -143,13 +143,13 @@ export default function DashboardPage() {
       const channel = supabase
         .channel('dashboard-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_leads', filter: `user_id=eq.${user.id}` },
-          () => supabase.from('pipeline_leads').select('stage').then(({ data }) => { if (data) setLeads(data) })
+          () => supabase.from('pipeline_leads').select('stage').eq('user_id', user.id).then(({ data }) => { if (data) setLeads(data) })
         )
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefas', filter: `user_id=eq.${user.id}` },
-          () => supabase.from('tarefas').select('id, title, client, priority, status, due_date').then(({ data }) => { if (data) setTarefas(data) })
+          () => supabase.from('tarefas').select('id, title, client, priority, status, due_date').eq('user_id', user.id).then(({ data }) => { if (data) setTarefas(data) })
         )
         .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes', filter: `user_id=eq.${user.id}` },
-          () => supabase.from('clientes').select('status, mrr').then(({ data }) => { if (data) setClientes(data) })
+          () => supabase.from('clientes').select('status, mrr').eq('user_id', user.id).then(({ data }) => { if (data) setClientes(data) })
         )
         .subscribe()
 
