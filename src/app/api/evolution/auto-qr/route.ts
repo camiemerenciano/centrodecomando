@@ -42,12 +42,43 @@ export async function POST() {
   const headers = { 'Content-Type': 'application/json', apikey: apiKey }
 
   try {
-    // 1. Cria a instância (ignora se já existir)
+    // Monta a URL do webhook para esta instalação
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace('http://localhost:3000', '')
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '')
+    const webhookUrl = appUrl ? `${appUrl}/api/evolution/webhook` : null
+
+    // 1. Cria a instância (ignora se já existir) e já configura o webhook
     await fetch(`${base}/instance/create`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }),
+      body: JSON.stringify({
+        instanceName,
+        qrcode: true,
+        integration: 'WHATSAPP-BAILEYS',
+        ...(webhookUrl ? {
+          webhook: {
+            url: webhookUrl,
+            byEvents: true,
+            base64: false,
+            events: ['MESSAGES_UPSERT'],
+          },
+        } : {}),
+      }),
     }).catch(() => null)
+
+    // Configura/atualiza webhook na instância existente também
+    if (webhookUrl) {
+      await fetch(`${base}/webhook/set/${instanceName}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          url: webhookUrl,
+          byEvents: true,
+          base64: false,
+          events: ['MESSAGES_UPSERT'],
+        }),
+      }).catch(() => null)
+    }
 
     // 2. Tenta conectar imediatamente
     const immediate = await tryConnect(base, instanceName, headers)
