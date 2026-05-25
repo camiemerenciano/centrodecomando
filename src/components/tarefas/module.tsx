@@ -97,24 +97,22 @@ function TaskCard({
     <div
       draggable
       onDragStart={e => { e.dataTransfer.setData('taskId', task.id); e.dataTransfer.effectAllowed = 'move' }}
-      className="relative bg-card border border-border rounded-xl p-3.5 space-y-2.5 hover:border-primary/30 cursor-grab active:cursor-grabbing transition-all hover:shadow-md hover:shadow-primary/5 group"
+      className="relative bg-card border border-border rounded-xl p-3.5 space-y-2 hover:border-primary/30 cursor-grab active:cursor-grabbing transition-all hover:shadow-md hover:shadow-primary/5 group"
       onClick={() => onEdit(task)}
     >
+      {/* Título + menu */}
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium text-foreground leading-snug group-hover:text-primary/90 transition-colors line-clamp-2 flex-1">
           {task.title}
         </p>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${pCfg.dot}`} />
-          <button
-            onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }}
-            className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
-          >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-              <circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
-            </svg>
-          </button>
-        </div>
+        <button
+          onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }}
+          className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-all shrink-0"
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+            <circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
+          </svg>
+        </button>
       </div>
 
       {task.client && <p className="text-xs text-muted-foreground">{task.client}</p>}
@@ -126,20 +124,32 @@ function TaskCard({
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <span className={`flex items-center gap-1 text-[10px] font-medium ${overdue ? 'text-red-400' : 'text-muted-foreground'}`}>
-          <Clock size={10} />
-          {fmtDate(task.dueDate)}
-          {overdue && ' · atrasada'}
-        </span>
-        {task.assigneeInitials && (
-          <Avatar className="w-5 h-5">
-            <AvatarFallback className="text-[9px] bg-primary/20 text-primary font-semibold">
+      {/* Prioridade + prazo */}
+      <div className="flex items-center justify-between gap-2 pt-0.5">
+        <Badge className={`${pCfg.color} border-0 text-[10px] px-1.5 h-5 gap-1 shrink-0`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${pCfg.dot}`} />
+          {pCfg.label}
+        </Badge>
+        {task.dueDate && (
+          <span className={`flex items-center gap-1 text-[10px] font-medium ${overdue ? 'text-red-400' : 'text-muted-foreground'}`}>
+            <Clock size={9} />
+            {fmtDate(task.dueDate)}
+            {overdue && ' · atrasada'}
+          </span>
+        )}
+      </div>
+
+      {/* Responsável */}
+      {task.assignee && (
+        <div className="flex items-center gap-1.5">
+          <Avatar className="w-4 h-4 shrink-0">
+            <AvatarFallback className="text-[8px] bg-primary/20 text-primary font-semibold">
               {task.assigneeInitials}
             </AvatarFallback>
           </Avatar>
-        )}
-      </div>
+          <span className="text-[10px] text-muted-foreground truncate">{task.assignee}</span>
+        </div>
+      )}
 
       {menuOpen && (
         <>
