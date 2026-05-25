@@ -12,7 +12,7 @@ interface AiConfig {
   conhecimento?: string | null
 }
 
-function buildSystemPrompt(c: AiConfig, areas: string[]): string {
+function buildSystemPrompt(c: AiConfig, areas: string[], hasCalendar = false): string {
   const parts: string[] = []
 
   parts.push(`você é ${c.nome}${c.cargo ? `, ${c.cargo}` : ''}${c.agencia ? ` da ${c.agencia}` : ''}.`)
@@ -33,6 +33,17 @@ function buildSystemPrompt(c: AiConfig, areas: string[]): string {
   if (c.emojis_proibidos.length) parts.push(`\nemojis proibidos: ${c.emojis_proibidos.join(' ')}`)
 
   if (c.exemplos.length) parts.push(`\n\nexemplos de como você escreve:\n${c.exemplos.map(e => `- "${e}"`).join('\n')}`)
+
+  if (hasCalendar) {
+    parts.push(`\n\nagendamento de reuniões (você tem acesso ao Google Agenda):
+- quando o cliente demonstrar interesse em uma call ou reunião, conduza ativamente para o agendamento
+- antes de propor qualquer horário, use consultar_disponibilidade para verificar se está livre
+- proponha 2 ou 3 opções de horários disponíveis de forma natural, sem listas
+- quando o cliente confirmar um horário, colete (se ainda não tiver): nome completo, nome da empresa, telefone e objetivo da reunião
+- com todos os dados em mãos, chame criar_evento para registrar no Google Agenda
+- após criar, confirme o agendamento de forma natural e tranquila, sem exagerar
+- calls duram 1 hora por padrão, a menos que o cliente diga diferente`)
+  }
 
   parts.push(`\n\nregras de formato:
 - escreva SEMPRE em minúsculo
@@ -205,7 +216,7 @@ export async function POST(request: NextRequest) {
       const areas: string[] = Array.isArray(authUser?.user_metadata?.areas_de_atuacao)
         ? (authUser!.user_metadata!.areas_de_atuacao as string[])
         : []
-      if (aiConfig) systemPrompt = buildSystemPrompt(aiConfig as AiConfig, areas)
+      if (aiConfig) systemPrompt = buildSystemPrompt(aiConfig as AiConfig, areas, !!gcalToken)
 
       if (!process.env.OPENAI_API_KEY) return
 
