@@ -533,25 +533,23 @@ function TaskFormPanel({
             </div>
           </div>
 
-          {projetos.length > 0 && (
-            <div>
-              <label className={lbl}>Projeto</label>
-              <div className="relative">
-                <select
-                  value={form.projetoId ?? ''}
-                  onChange={e => {
-                    const proj = projetos.find(p => p.id === e.target.value)
-                    setForm(f => ({ ...f, projetoId: e.target.value || null, projetoNome: proj?.nome ?? null }))
-                  }}
-                  className={inp + ' cursor-pointer appearance-none pr-7'}
-                >
-                  <option value="">— Sem projeto —</option>
-                  {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                </select>
-                <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              </div>
+          <div>
+            <label className={lbl}>Projeto</label>
+            <div className="relative">
+              <select
+                value={form.projetoId ?? ''}
+                onChange={e => {
+                  const proj = projetos.find(p => p.id === e.target.value)
+                  setForm(f => ({ ...f, projetoId: e.target.value || null, projetoNome: proj?.nome ?? null }))
+                }}
+                className={inp + ' cursor-pointer appearance-none pr-7'}
+              >
+                <option value="">— Sem projeto —</option>
+                {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+              <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             </div>
-          )}
+          </div>
 
           <div>
             <label className={lbl}>Origem da conversa</label>
