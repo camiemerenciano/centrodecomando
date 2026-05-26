@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
-import { Hash, Send, MessageSquareDot, Plus, Lock, Search, X, MessageSquare } from 'lucide-react'
+import { Hash, Send, MessageSquareDot, Plus, Lock, Search, X, MessageSquare, Trash2 } from 'lucide-react'
+
+const CANAIS_PADRAO = ['geral', 'projetos', 'avisos']
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -158,10 +160,19 @@ export default function ChatPage() {
   // ── load canais ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    supabase.from('chat_canais').select('*').order('criado_em').then(({ data }) => {
-      if (data?.length) { setCanais(data); setAtivo(data[0]) }
-    })
-  }, [])
+    if (!user) return
+
+    supabase.from('chat_canais').select('*').eq('user_id', user.id).order('criado_em')
+      .then(async ({ data }) => {
+        if (data && data.length > 0) {
+          setCanais(data); setAtivo(data[0]); return
+        }
+        // primeira vez — cria canais padrão
+        const inserts = CANAIS_PADRAO.map(nome => ({ nome, user_id: user.id, criado_por: user.id }))
+        const { data: criados } = await supabase.from('chat_canais').insert(inserts).select()
+        if (criados?.length) { setCanais(criados); setAtivo(criados[0]) }
+      })
+  }, [user])
 
   // ── load membros ─────────────────────────────────────────────────────────────
 
@@ -303,11 +314,23 @@ export default function ChatPage() {
     if (!nomeCanal.trim() || !user) return
     const { data } = await supabase
       .from('chat_canais')
-      .insert({ nome: nomeCanal.trim().toLowerCase().replace(/\s+/g, '-'), criado_por: user.id })
+      .insert({ nome: nomeCanal.trim().toLowerCase().replace(/\s+/g, '-'), user_id: user.id, criado_por: user.id })
       .select().single()
     if (data) { setCanais(prev => [...prev, data]); setAtivo(data); setModo('canal') }
     setNomeCanal('')
     setNovoCanal(false)
+  }
+
+  async function apagarCanal(canal: Canal, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!confirm(`Apagar #${canal.nome}? As mensagens serão perdidas.`)) return
+    await supabase.from('chat_mensagens').delete().eq('canal_id', canal.id)
+    await supabase.from('chat_canais').delete().eq('id', canal.id)
+    setCanais(prev => {
+      const lista = prev.filter(c => c.id !== canal.id)
+      if (ativo?.id === canal.id) setAtivo(lista[0] ?? null)
+      return lista
+    })
   }
 
   const membrosFiltrados = membros.filter(m =>
@@ -358,14 +381,21 @@ export default function ChatPage() {
             <button
               key={canal.id}
               onClick={() => { setAtivo(canal); setModo('canal') }}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all text-left ${
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all text-left group ${
                 modo === 'canal' && ativo?.id === canal.id
                   ? 'bg-primary/15 text-primary border border-primary/20'
                   : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent'
               }`}
             >
               <Hash size={13} className="shrink-0 opacity-70" />
-              <span className="truncate">{canal.nome}</span>
+              <span className="truncate flex-1">{canal.nome}</span>
+              <span
+                role="button"
+                onClick={(e) => apagarCanal(canal, e)}
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all p-0.5 rounded"
+              >
+                <Trash2 size={11} />
+              </span>
             </button>
           ))}
         </nav>
