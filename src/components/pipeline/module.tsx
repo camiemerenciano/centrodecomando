@@ -451,14 +451,7 @@ export function PipelineModule() {
       if (!user) return
       setUserId(user.id)
 
-      // pipeline_leads é sempre a fonte de verdade
-      const leadsRes = await fetch('/api/pipeline/leads')
-      const leadsData: Record<string, unknown>[] = leadsRes.ok ? await leadsRes.json() : []
-      if (!Array.isArray(leadsData)) return
-
-      if (leadsData.length === 0) { setCards([]); return }
-
-      // tenta enriquecer nomes via Evolution (opcional — se falhar usa o que tem no banco)
+      // tenta buscar e sincronizar chats da Evolution
       const cfgRes = await fetch('/api/evolution/config')
       if (cfgRes.ok) {
         const { apiUrl, apiKey, instanceName } = await cfgRes.json()
@@ -472,24 +465,35 @@ export function PipelineModule() {
             const chats = await evoRes.json()
             if (Array.isArray(chats)) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const nameByJid = new Map(chats.map((c: any) => {
+              const validChats = chats.filter((c: any) => {
                 const jid: string = c?.remoteJid ?? c?.id?.remote ?? c?.id ?? ''
-                const phone = jid.split('@')[0]
-                return [jid, (c?.name ?? c?.pushName ?? `+${phone}`) as string]
-              }))
-              setCards(leadsData.map(l => fromRow({
-                ...l,
-                title:  nameByJid.get(l.remote_jid as string) ?? l.title,
-                client: nameByJid.get(l.remote_jid as string) ?? l.client,
-              })))
-              return
+                return jid.endsWith('@s.whatsapp.net')
+              })
+              // sincroniza para pipeline_leads (só insere novos, preserva etapas existentes)
+              if (validChats.length > 0) {
+                fetch('/api/pipeline/leads/batch', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    leads: validChats.map((c: any) => {
+                      const jid: string = c?.remoteJid ?? c?.id?.remote ?? c?.id ?? ''
+                      const phone = jid.split('@')[0]
+                      const name = c?.name ?? c?.pushName ?? `+${phone}`
+                      return { remote_jid: jid, title: name, client: name }
+                    }),
+                  }),
+                }).catch(() => {})
+              }
             }
           }
         }
       }
 
-      // fallback: só dados do banco
-      setCards(leadsData.map(fromRow))
+      // lê pipeline_leads do banco (fonte de verdade para etapas e status)
+      const leadsRes = await fetch('/api/pipeline/leads')
+      const leadsData: Record<string, unknown>[] = leadsRes.ok ? await leadsRes.json() : []
+      if (Array.isArray(leadsData)) setCards(leadsData.map(fromRow))
     }
 
     fetchCards()
