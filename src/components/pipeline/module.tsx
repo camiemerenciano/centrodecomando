@@ -456,7 +456,11 @@ export function PipelineModule() {
       if (cfgRes.ok) {
         const { apiUrl, apiKey, instanceName, connectedAt } = await cfgRes.json()
         if (apiUrl && apiKey && instanceName) {
-          const connectedTs = connectedAt ? new Date(connectedAt).getTime() : 0
+          // usa localStorage como fonte primária (igual ao módulo de mensagens)
+          const lsConnected = typeof window !== 'undefined' ? localStorage.getItem('evo_connectedAt') : null
+          const connectedTs = lsConnected
+            ? new Date(lsConnected).getTime()
+            : connectedAt ? new Date(connectedAt).getTime() : 0
           const evoRes = await fetch('/api/evolution/chats', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -485,22 +489,21 @@ export function PipelineModule() {
                 }
                 return true
               })
-              // sincroniza para pipeline_leads (só insere novos, preserva etapas existentes)
-              if (validChats.length > 0) {
-                await fetch('/api/pipeline/leads/batch', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    leads: validChats.map((c: any) => {
-                      const jid: string = c?.remoteJid ?? c?.id?.remote ?? c?.id ?? ''
-                      const phone = jid.split('@')[0]
-                      const name = c?.name ?? c?.pushName ?? `+${phone}`
-                      return { remote_jid: jid, title: name, client: name }
-                    }),
+              // sincroniza para pipeline_leads: insere novos e remove chats antigos que não estão mais na lista válida
+              await fetch('/api/pipeline/leads/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  purgeStale: connectedTs > 0,
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  leads: validChats.map((c: any) => {
+                    const jid: string = c?.remoteJid ?? c?.id?.remote ?? c?.id ?? ''
+                    const phone = jid.split('@')[0]
+                    const name = c?.name ?? c?.pushName ?? `+${phone}`
+                    return { remote_jid: jid, title: name, client: name }
                   }),
-                }).catch(() => {})
-              }
+                }),
+              }).catch(() => {})
             }
           }
         }
