@@ -593,19 +593,23 @@ export function TarefasModule() {
       if (!user) return
       setUserId(user.id)
 
-      const [{ data: tarefasData }, { data: clientesData }] = await Promise.all([
-        supabase.from('tarefas').select('*, projetos(nome)').eq('user_id', user.id).order('created_at', { ascending: true }),
+      const [projRes, { data: tarefasData }, { data: clientesData }] = await Promise.all([
+        fetch('/api/projetos').then(r => r.ok ? r.json() : []),
+        supabase.from('tarefas').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
         supabase.from('clientes').select('name').eq('user_id', user.id).order('name'),
       ])
 
-      fetch('/api/projetos').then(r => r.ok ? r.json() : []).then(data => {
-        if (Array.isArray(data)) setProjetos(data)
-      })
+      const projetosData: Projeto[] = Array.isArray(projRes) ? projRes : []
+      setProjetos(projetosData)
+      const projMap = new Map<string, string>(projetosData.map(p => [p.id, p.nome]))
 
-      if (tarefasData) setTasks(tarefasData.map(fromRow))
+      if (tarefasData) setTasks(tarefasData.map(r => {
+        const t = fromRow(r)
+        if (t.projetoId) t.projetoNome = projMap.get(t.projetoId) ?? null
+        return t
+      }))
       if (clientesData) setClientNames(clientesData.map((c: { name: string }) => c.name).filter(Boolean))
 
-      // Team members: current user + any future org members
       const fullName = user.user_metadata?.full_name as string | undefined
       if (fullName) setMemberNames([fullName])
     }
@@ -659,10 +663,15 @@ export function TarefasModule() {
     const isNew = !tasks.some(t => t.id === task.id)
     if (isNew) {
       const { data } = await supabase.from('tarefas').insert(row).select().single()
-      if (data) setTasks(prev => [...prev, fromRow(data)])
+      if (data) {
+        const newTask = fromRow(data)
+        if (newTask.projetoId) newTask.projetoNome = projetos.find(p => p.id === newTask.projetoId)?.nome ?? null
+        setTasks(prev => [...prev, newTask])
+      }
     } else {
       await supabase.from('tarefas').update(row).eq('id', task.id)
-      setTasks(prev => prev.map(t => t.id === task.id ? task : t))
+      const projetoNome = task.projetoId ? (projetos.find(p => p.id === task.projetoId)?.nome ?? null) : null
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...task, projetoNome } : t))
     }
     setShowForm(false)
   }
