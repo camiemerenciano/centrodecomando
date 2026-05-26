@@ -471,7 +471,7 @@ export function PipelineModule() {
               })
               // sincroniza para pipeline_leads (só insere novos, preserva etapas existentes)
               if (validChats.length > 0) {
-                fetch('/api/pipeline/leads/batch', {
+                await fetch('/api/pipeline/leads/batch', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
