@@ -456,6 +456,7 @@ export function PipelineModule() {
       if (cfgRes.ok) {
         const { apiUrl, apiKey, instanceName } = await cfgRes.json()
         if (apiUrl && apiKey && instanceName) {
+          const connectedTs = connectedAt ? new Date(connectedAt).getTime() : 0
           const evoRes = await fetch('/api/evolution/chats', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -467,7 +468,22 @@ export function PipelineModule() {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const validChats = chats.filter((c: any) => {
                 const jid: string = c?.remoteJid ?? c?.id?.remote ?? c?.id ?? ''
-                return jid.endsWith('@s.whatsapp.net')
+                if (!jid.endsWith('@s.whatsapp.net')) return false
+                if (connectedTs > 0) {
+                  const msgTs = c?.lastMessage?.messageTimestamp
+                  const toMs = (raw: unknown): number => {
+                    if (!raw) return 0
+                    if (typeof raw === 'number') return raw * 1000
+                    if (typeof raw === 'string') return (parseInt(raw, 10) || 0) * 1000
+                    const o = raw as Record<string, number>
+                    if (typeof o?.low === 'number') return (o.low + (o.high ?? 0) * 2 ** 32) * 1000
+                    return 0
+                  }
+                  const updatedTs = c.updatedAt ? new Date(c.updatedAt as string).getTime() : 0
+                  const lastActivity = Math.max(toMs(msgTs), updatedTs)
+                  if (lastActivity < connectedTs) return false
+                }
+                return true
               })
               // sincroniza para pipeline_leads (só insere novos, preserva etapas existentes)
               if (validChats.length > 0) {
