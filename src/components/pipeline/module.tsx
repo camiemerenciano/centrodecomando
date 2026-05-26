@@ -454,7 +454,7 @@ export function PipelineModule() {
       // tenta buscar e sincronizar chats da Evolution
       const cfgRes = await fetch('/api/evolution/config')
       if (cfgRes.ok) {
-        const { apiUrl, apiKey, instanceName } = await cfgRes.json()
+        const { apiUrl, apiKey, instanceName, connectedAt } = await cfgRes.json()
         if (apiUrl && apiKey && instanceName) {
           const connectedTs = connectedAt ? new Date(connectedAt).getTime() : 0
           const evoRes = await fetch('/api/evolution/chats', {
