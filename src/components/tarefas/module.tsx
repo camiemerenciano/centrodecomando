@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import {
   Plus, LayoutGrid, List, X, Clock, MessageSquare,
   Circle, PlayCircle, Eye, CheckCircle2, Pencil, Hourglass,
-  Trash2, ChevronDown,
+  Trash2, ChevronDown, ChevronLeft, ChevronRight, GanttChart,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +27,7 @@ interface OpTask {
   priority: Priority
   status: OpStatus
   conversationOrigin: string | null
+  createdAt: string
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -77,7 +78,230 @@ function fromRow(r: any): OpTask {
     priority:           (r.priority ?? 'medium') as Priority,
     status:             (r.status ?? 'novo') as OpStatus,
     conversationOrigin: r.conversation_origin ?? null,
+    createdAt:          r.created_at ?? new Date().toISOString(),
   }
+}
+
+// ─── GanttView ────────────────────────────────────────────────────────────────
+
+const PT_WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
+const PT_MONTHS   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+const CELL = 32   // px por dia
+const ROW  = 44   // px por tarefa
+const HDR  = 52   // px do cabeçalho
+
+function dayOnly(d: Date) {
+  const r = new Date(d); r.setHours(0,0,0,0); return r
+}
+
+function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => void }) {
+  const today = useMemo(() => dayOnly(new Date()), [])
+
+  const [winStart, setWinStart] = useState<Date>(() => {
+    const d = dayOnly(new Date()); d.setDate(d.getDate() - 14); return d
+  })
+
+  const DAYS = 90
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const days = useMemo(() => Array.from({ length: DAYS }, (_, i) => {
+    const d = new Date(winStart); d.setDate(winStart.getDate() + i); return d
+  }), [winStart])
+
+  // group days by month for the top header
+  const monthGroups = useMemo(() => {
+    const groups: { label: string; count: number }[] = []
+    for (const d of days) {
+      const lbl = `${PT_MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`
+      if (!groups.length || groups[groups.length - 1].label !== lbl)
+        groups.push({ label: lbl, count: 0 })
+      groups[groups.length - 1].count++
+    }
+    return groups
+  }, [days])
+
+  const todayOff = useMemo(
+    () => Math.round((today.getTime() - winStart.getTime()) / 86400000),
+    [today, winStart]
+  )
+
+  function navigate(months: number) {
+    setWinStart(prev => {
+      const d = new Date(prev); d.setMonth(d.getMonth() + months); return d
+    })
+  }
+
+  function goToday() {
+    const d = dayOnly(new Date()); d.setDate(d.getDate() - 14); setWinStart(d)
+  }
+
+  // Scroll so today is visible on mount
+  useEffect(() => {
+    if (scrollRef.current && todayOff >= 0) {
+      scrollRef.current.scrollLeft = Math.max(0, todayOff * CELL - 120)
+    }
+  }, [todayOff])
+
+  const totalW = DAYS * CELL
+
+  return (
+    <div className="space-y-3">
+      {/* Nav */}
+      <div className="flex items-center gap-2">
+        <button onClick={() => navigate(-1)} className="w-7 h-7 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all">
+          <ChevronLeft size={13} />
+        </button>
+        <button onClick={() => navigate(1)} className="w-7 h-7 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all">
+          <ChevronRight size={13} />
+        </button>
+        <button onClick={goToday} className="h-7 px-3 rounded-lg text-xs font-medium bg-primary/15 text-primary border border-primary/20">
+          Hoje
+        </button>
+        <span className="text-xs text-muted-foreground ml-1">
+          {PT_MONTHS[days[0].getMonth()]} {days[0].getFullYear()} – {PT_MONTHS[days[DAYS-1].getMonth()]} {days[DAYS-1].getFullYear()}
+        </span>
+      </div>
+
+      {/* Grid */}
+      <div className="rounded-xl border border-border overflow-hidden flex select-none">
+
+        {/* Left: task names */}
+        <div className="w-52 shrink-0 border-r border-border z-10 bg-card">
+          <div style={{ height: HDR }} className="flex items-end px-4 pb-2.5 border-b border-border bg-muted/30">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Tarefa</span>
+          </div>
+          {tasks.length === 0 && (
+            <div style={{ height: ROW * 3 }} className="flex items-center justify-center">
+              <p className="text-xs text-muted-foreground">Nenhuma tarefa</p>
+            </div>
+          )}
+          {tasks.map(task => {
+            const cfg = STATUS_CFG[task.status]
+            return (
+              <div
+                key={task.id}
+                style={{ height: ROW }}
+                className="flex items-center gap-2.5 px-4 border-b border-border/50 hover:bg-muted/30 cursor-pointer group transition-colors"
+                onClick={() => onEdit(task)}
+              >
+                <span className={cfg.color + ' shrink-0'}>{cfg.icon}</span>
+                <span className="text-xs text-foreground truncate flex-1">{task.title}</span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Right: scrollable timeline */}
+        <div ref={scrollRef} className="flex-1 overflow-x-auto">
+          <div style={{ width: totalW }} className="relative">
+
+            {/* Month row */}
+            <div style={{ height: HDR / 2 }} className="flex border-b border-border bg-muted/20">
+              {monthGroups.map((mg, i) => (
+                <div
+                  key={i}
+                  style={{ width: mg.count * CELL }}
+                  className="shrink-0 flex items-center px-2.5 border-r border-border/40 text-[11px] font-semibold text-muted-foreground"
+                >
+                  {mg.label}
+                </div>
+              ))}
+            </div>
+
+            {/* Day row */}
+            <div style={{ height: HDR / 2 }} className="flex border-b border-border bg-muted/30">
+              {days.map((d, i) => {
+                const isToday = i === todayOff
+                const isWeekend = d.getDay() === 0 || d.getDay() === 6
+                return (
+                  <div
+                    key={i}
+                    style={{ width: CELL }}
+                    className={`shrink-0 flex flex-col items-center justify-center border-r border-border/30
+                      ${isToday ? 'bg-primary/20' : isWeekend ? 'bg-muted/60' : ''}`}
+                  >
+                    <span className={`text-[8px] font-medium leading-none ${isToday ? 'text-primary' : 'text-muted-foreground/50'}`}>
+                      {PT_WEEKDAYS[d.getDay()]}
+                    </span>
+                    <span className={`text-[10px] font-bold leading-tight ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>
+                      {d.getDate()}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Task rows */}
+            {tasks.length === 0 && (
+              <div style={{ height: ROW * 3, width: totalW }} className="flex items-center justify-center">
+                <p className="text-xs text-muted-foreground">Nenhuma tarefa para exibir</p>
+              </div>
+            )}
+            {tasks.map(task => {
+              const start = dayOnly(new Date(task.createdAt))
+              const end   = task.dueDate ? dayOnly(new Date(task.dueDate)) : null
+
+              const startOff = Math.round((start.getTime() - winStart.getTime()) / 86400000)
+              const endOff   = end ? Math.round((end.getTime() - winStart.getTime()) / 86400000) : startOff
+
+              const barL = Math.max(0, startOff) * CELL
+              const barR = Math.min(DAYS, endOff + 1) * CELL
+              const barW = Math.max(CELL, barR - barL)
+              const visible = endOff >= 0 && startOff < DAYS
+
+              const cfg     = STATUS_CFG[task.status]
+              const overdue = !!task.dueDate && isOverdue(task.dueDate) && task.status !== 'concluido'
+
+              return (
+                <div
+                  key={task.id}
+                  style={{ height: ROW, width: totalW }}
+                  className="relative border-b border-border/40"
+                >
+                  {/* Weekend shading columns */}
+                  {days.map((d, i) => (d.getDay() === 0 || d.getDay() === 6) ? (
+                    <div key={i} style={{ left: i * CELL, width: CELL, height: ROW }} className="absolute bg-muted/25 pointer-events-none" />
+                  ) : null)}
+
+                  {/* Today vertical line */}
+                  {todayOff >= 0 && todayOff < DAYS && (
+                    <div
+                      style={{ left: todayOff * CELL + CELL / 2 - 0.5, height: ROW }}
+                      className="absolute w-px bg-primary/25 pointer-events-none z-10"
+                    />
+                  )}
+
+                  {/* Bar */}
+                  {visible && (
+                    <div
+                      style={{ left: barL + 2, width: barW - 4, top: (ROW - 28) / 2, height: 28 }}
+                      className={`absolute rounded-lg flex items-center px-2.5 overflow-hidden cursor-pointer border
+                        hover:brightness-110 transition-all z-20
+                        ${overdue
+                          ? 'bg-red-500/20 border-red-500/40 text-red-300'
+                          : `${cfg.bg} ${cfg.border} ${cfg.color}`
+                        }`}
+                      onClick={() => onEdit(task)}
+                      title={`${task.title}${task.dueDate ? ' · vence ' + fmtDate(task.dueDate) : ''}${overdue ? ' · ATRASADA' : ''}`}
+                    >
+                      <span className="text-[10px] font-medium truncate">{task.title}</span>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 px-1">
+        <span className="text-[10px] text-muted-foreground">Barra vai da data de criação até o prazo</span>
+        <span className="flex items-center gap-1 text-[10px] text-red-400"><span className="w-2 h-2 rounded-sm bg-red-500/20 border border-red-500/40 inline-block" /> Atrasada</span>
+        <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><span className="w-px h-3 bg-primary/40 inline-block" /> Hoje</span>
+      </div>
+    </div>
+  )
 }
 
 // ─── TaskCard ─────────────────────────────────────────────────────────────────
@@ -210,6 +434,7 @@ function TaskFormPanel({
       priority:           form.priority!,
       status:             form.status!,
       conversationOrigin: form.conversationOrigin?.trim() || null,
+      createdAt:          task?.createdAt ?? new Date().toISOString(),
     })
   }
 
@@ -314,7 +539,7 @@ function TaskFormPanel({
 export function TarefasModule() {
   const [tasks, setTasks]               = useState<OpTask[]>([])
   const [dragOver, setDragOver]         = useState<OpStatus | null>(null)
-  const [view, setView]                 = useState<'kanban' | 'list'>('kanban')
+  const [view, setView]                 = useState<'kanban' | 'list' | 'gantt'>('kanban')
   const [filterStatus, setFilterStatus] = useState<OpStatus | 'all'>('all')
   const [filterDue, setFilterDue]       = useState('all')
   const [showForm, setShowForm]         = useState(false)
@@ -448,6 +673,9 @@ export function TarefasModule() {
             <button onClick={() => setView('list')} className={`w-7 h-7 flex items-center justify-center rounded transition-all ${view === 'list' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} title="Lista">
               <List size={13} />
             </button>
+            <button onClick={() => setView('gantt')} className={`w-7 h-7 flex items-center justify-center rounded transition-all ${view === 'gantt' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} title="Gantt">
+              <GanttChart size={13} />
+            </button>
           </div>
           <Button size="sm" onClick={() => openCreate()} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
             <Plus size={13} /> Nova tarefa
@@ -569,6 +797,11 @@ export function TarefasModule() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* ── Gantt view ── */}
+      {view === 'gantt' && (
+        <GanttView tasks={filtered} onEdit={openEdit} />
       )}
 
       {showForm && (
