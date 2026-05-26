@@ -20,6 +20,7 @@ import {
   Plug,
   MessagesSquare,
   Building2,
+  FolderOpen,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -55,6 +56,7 @@ const navGroups = [
   {
     label: 'Operação',
     items: [
+      { href: '/projetos',   label: 'Projetos',   icon: FolderOpen },
       { href: '/tarefas',    label: 'Tarefas',    icon: CheckSquare },
       { href: '/calendario', label: 'Calendário', icon: Calendar },
       { href: '/equipe',     label: 'Equipe',     icon: UsersRound },

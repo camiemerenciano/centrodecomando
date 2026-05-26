@@ -19,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   Plus, X, Clock, Pencil, Trash2, GripVertical,
   Inbox, Search, CalendarClock, CalendarCheck2,
-  FileText, FileCheck2, RefreshCw, XCircle, Phone, DollarSign,
+  FileText, FileCheck2, RefreshCw, XCircle, Phone, DollarSign, FolderOpen,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -29,6 +29,8 @@ import { Button } from '@/components/ui/button'
 
 type Stage    = 'recepcao' | 'viabilidade' | 'ag_agendamento' | 'agendado' | 'contrato_enviado' | 'contrato_assinado' | 'followup' | 'perdido'
 type Priority = 'low' | 'medium' | 'high' | 'urgent'
+
+interface Projeto { id: string; nome: string; cor: string }
 
 interface PCard {
   id: string
@@ -41,6 +43,8 @@ interface PCard {
   priority: Priority
   stage: Stage
   value: string       // valor estimado do contrato
+  projetoId: string | null
+  projetoNome: string | null
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -78,6 +82,8 @@ function fromRow(r: any): PCard {
     priority:         (r.priority ?? 'medium') as Priority,
     stage:            (r.stage ?? 'recepcao') as Stage,
     value:            r.value ?? '',
+    projetoId:        r.projeto_id ?? null,
+    projetoNome:      r.projeto_nome ?? null,
   }
 }
 
@@ -173,6 +179,14 @@ function DraggableCard({
           </span>
         )}
       </div>
+
+      {/* Project badge */}
+      {card.projetoNome && (
+        <div className="flex items-center gap-1 pl-5">
+          <FolderOpen size={9} className="text-violet-400 shrink-0" />
+          <span className="text-[10px] text-violet-400 truncate">{card.projetoNome}</span>
+        </div>
+      )}
 
       {/* Footer */}
       <div className="flex items-center justify-between pl-5">
@@ -287,10 +301,12 @@ function CardFormPanel({
   card,
   onSave,
   onClose,
+  projetos,
 }: {
   card: Partial<PCard> | null
   onSave: (c: PCard) => void
   onClose: () => void
+  projetos: Projeto[]
 }) {
   const isEdit = !!card?.id
   const [form, setForm] = useState<Partial<PCard>>({
@@ -303,6 +319,8 @@ function CardFormPanel({
     priority: 'medium',
     stage: 'recepcao',
     value: '',
+    projetoId: null,
+    projetoNome: null,
     ...card,
   })
 
@@ -330,6 +348,8 @@ function CardFormPanel({
       priority:         form.priority!,
       stage:            form.stage!,
       value:            form.value ?? '',
+      projetoId:        form.projetoId ?? null,
+      projetoNome:      form.projetoNome ?? null,
     })
   }
 
@@ -413,6 +433,23 @@ function CardFormPanel({
               <input value={form.value ?? ''} onChange={field('value')} placeholder="R$ 0,00" className={inp} />
             </div>
           </div>
+
+          {projetos.length > 0 && (
+            <div>
+              <label className={lbl}>Projeto</label>
+              <select
+                value={form.projetoId ?? ''}
+                onChange={e => {
+                  const proj = projetos.find(p => p.id === e.target.value)
+                  setForm(f => ({ ...f, projetoId: e.target.value || null, projetoNome: proj?.nome ?? null }))
+                }}
+                className={inp + ' cursor-pointer'}
+              >
+                <option value="">— Sem projeto —</option>
+                {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="px-5 py-4 border-t border-border flex items-center justify-between shrink-0">
@@ -441,9 +478,17 @@ export function PipelineModule() {
   const [showForm, setShowForm]         = useState(false)
   const [editCard, setEditCard]         = useState<Partial<PCard> | null>(null)
   const [filterPriority, setFilterPriority] = useState('all')
+  const [filterProjeto, setFilterProjeto]   = useState('all')
   const [saving, setSaving]             = useState<string | null>(null)
   const [userId, setUserId]             = useState<string | null>(null)
+  const [projetos, setProjetos]         = useState<Projeto[]>([])
   const supabase = createClient()
+
+  useEffect(() => {
+    fetch('/api/projetos').then(r => r.ok ? r.json() : []).then(data => {
+      if (Array.isArray(data)) setProjetos(data)
+    })
+  }, [])
 
   useEffect(() => {
     async function fetchCards() {
@@ -528,8 +573,9 @@ export function PipelineModule() {
 
   const filtered = useMemo(() => cards.filter(c => {
     if (filterPriority !== 'all' && c.priority !== filterPriority) return false
+    if (filterProjeto !== 'all' && c.projetoId !== filterProjeto) return false
     return true
-  }), [cards, filterPriority])
+  }), [cards, filterPriority, filterProjeto])
 
   // ── Drag handlers ──────────────────────────────────────────────────────────
 
@@ -585,6 +631,7 @@ export function PipelineModule() {
       priority:         card.priority,
       stage:            card.stage,
       value:            card.value,
+      projeto_id:       card.projetoId || null,
     }
     const isNew = !cards.some(c => c.id === card.id)
     if (isNew) {
@@ -625,9 +672,16 @@ export function PipelineModule() {
             <option value="low">Baixa</option>
           </select>
 
-          {filterPriority !== 'all' && (
+          {projetos.length > 0 && (
+            <select value={filterProjeto} onChange={e => setFilterProjeto(e.target.value)} className={sel}>
+              <option value="all">Todos os projetos</option>
+              {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+            </select>
+          )}
+
+          {(filterPriority !== 'all' || filterProjeto !== 'all') && (
             <button
-              onClick={() => setFilterPriority('all')}
+              onClick={() => { setFilterPriority('all'); setFilterProjeto('all') }}
               className="flex items-center gap-1 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted border border-border transition-all"
             >
               <X size={11} /> Limpar
@@ -687,6 +741,7 @@ export function PipelineModule() {
           card={editCard}
           onSave={handleSave}
           onClose={() => setShowForm(false)}
+          projetos={projetos}
         />
       )}
     </div>

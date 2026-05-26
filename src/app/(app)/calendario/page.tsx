@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -8,12 +8,17 @@ import { Button } from '@/components/ui/button'
 import {
   Plus, ChevronLeft, ChevronRight,
   AtSign, Video, FileText, Calendar,
-  RefreshCw, Loader2, AlertCircle, X, Trash2, ExternalLink,
+  RefreshCw, Loader2, AlertCircle, X, Trash2, ExternalLink, FolderOpen,
 } from 'lucide-react'
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-type EventType = 'post' | 'reel' | 'story' | 'meeting' | 'deadline' | 'google'
+type EventType = 'post' | 'reel' | 'story' | 'meeting' | 'deadline' | 'google' | 'projeto'
+
+interface Projeto {
+  id: string; nome: string; cliente: string; cor: string
+  data_inicio: string | null; data_fim: string | null; status: string
+}
 
 interface CalEvent {
   id: string | number
@@ -38,6 +43,7 @@ const typeIcon: Record<EventType, React.ReactNode> = {
   meeting:  <Calendar size={10} />,
   deadline: <FileText size={10} />,
   google:   <Calendar size={10} />,
+  projeto:  <FolderOpen size={10} />,
 }
 
 const typeColor: Record<EventType, string> = {
@@ -47,6 +53,7 @@ const typeColor: Record<EventType, string> = {
   meeting:  'bg-amber-500/15 text-amber-400 border-0',
   deadline: 'bg-red-500/15 text-red-400 border-0',
   google:   'bg-sky-500/15 text-sky-400 border-0',
+  projeto:  'bg-violet-500/15 text-violet-400 border-0',
 }
 
 const eventBgColor: Record<EventType, string> = {
@@ -56,11 +63,12 @@ const eventBgColor: Record<EventType, string> = {
   meeting:  'bg-amber-500/20 border-amber-500/40 text-amber-300',
   deadline: 'bg-red-500/20 border-red-500/40 text-red-300',
   google:   'bg-sky-500/15 border-sky-500/30 text-sky-200',
+  projeto:  'bg-violet-500/15 border-violet-500/30 text-violet-200',
 }
 
 const typeLabels: Record<EventType, string> = {
   post: 'Post', reel: 'Reel', story: 'Story',
-  meeting: 'Reunião', deadline: 'Prazo', google: 'Google',
+  meeting: 'Reunião', deadline: 'Prazo', google: 'Google', projeto: 'Projeto',
 }
 
 const staticEvents: CalEvent[] = []
@@ -192,6 +200,7 @@ export default function CalendarioPage() {
   const [editingEvent, setEditingEvent] = useState<CalEvent | null>(null)
   const [editForm, setEditForm]         = useState<EditForm | null>(null)
   const [savingEvent, setSavingEvent]   = useState(false)
+  const [projetos, setProjetos]         = useState<Projeto[]>([])
 
   const weekDays = getWeekDays(weekOffset)
   const today    = new Date()
@@ -200,6 +209,44 @@ export default function CalendarioPage() {
     d.getMonth()    === today.getMonth() &&
     d.getDate()     === today.getDate()
   )
+
+  // Load projetos on mount
+  useEffect(() => {
+    fetch('/api/projetos').then(r => r.ok ? r.json() : []).then(data => {
+      if (Array.isArray(data)) setProjetos(data)
+    })
+  }, [])
+
+  // Map projects to CalEvents for the current week
+  const projectEvents = useMemo<CalEvent[]>(() => {
+    const events: CalEvent[] = []
+    for (const p of projetos) {
+      if (!p.data_inicio && !p.data_fim) continue
+      const checkDate = (dateStr: string | null, suffix: string, hour: number) => {
+        if (!dateStr) return
+        const d = new Date(dateStr)
+        const dayIdx = weekDays.findIndex(wd =>
+          wd.getFullYear() === d.getFullYear() &&
+          wd.getMonth()    === d.getMonth() &&
+          wd.getDate()     === d.getDate()
+        )
+        if (dayIdx === -1) return
+        events.push({
+          id: `proj-${p.id}-${suffix}`,
+          title: `${p.nome}${suffix === 'fim' ? ' · Prazo' : ' · Início'}`,
+          client: p.cliente || 'Projeto',
+          type: 'projeto',
+          day: dayIdx,
+          startH: hour,
+          endH: hour + 0.5,
+          color: eventBgColor['projeto'],
+        })
+      }
+      checkDate(p.data_inicio, 'inicio', 8)
+      if (p.data_fim !== p.data_inicio) checkDate(p.data_fim, 'fim', 17.5)
+    }
+    return events
+  }, [projetos, weekDays])
 
   // Load Google token on mount — always uses the current user's own calendar
   useEffect(() => {
@@ -290,7 +337,7 @@ export default function CalendarioPage() {
     else setGoogleEvents([])
   }, [gcalToken, weekOffset]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const allEvents = [...localEvents, ...googleEvents]
+  const allEvents = [...localEvents, ...googleEvents, ...projectEvents]
 
   function openCreate() {
     const defaultDay = todayIdx >= 0 ? todayIdx : 0
@@ -523,8 +570,8 @@ export default function CalendarioPage() {
                               <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">{ev.title}</p>
                               <p className="text-[10px] text-muted-foreground">{ev.client}</p>
                             </div>
-                            <Badge className={`text-[9px] px-1.5 h-4 shrink-0 ${typeColor[ev.type]}`}>
-                              {ev.type === 'google' ? 'Google' : ev.type}
+                            <Badge className={`text-[9px] px-1.5 h-4 shrink-0 ${typeColor[ev.type as EventType] ?? ''}`}>
+                              {typeLabels[ev.type as EventType] ?? ev.type}
                             </Badge>
                           </div>
                         ))}
@@ -605,6 +652,35 @@ export default function CalendarioPage() {
 
       {/* Sidebar */}
       <div className="w-64 shrink-0 flex flex-col gap-4">
+        {/* Active projects widget */}
+        {projetos.filter(p => p.status === 'ativo').length > 0 && (
+          <Card className="bg-card border-border shrink-0">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <FolderOpen size={13} className="text-violet-400" /> Projetos ativos
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-2">
+              {projetos.filter(p => p.status === 'ativo').slice(0, 4).map(p => (
+                <div key={p.id} className="flex items-center gap-2.5 rounded-lg p-2 hover:bg-muted/40 transition-colors">
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: p.cor }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-foreground truncate">{p.nome}</p>
+                    {p.data_fim && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Prazo: {new Date(p.data_fim).toLocaleDateString('pt-BR')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <a href="/projetos" className="block text-[11px] text-primary hover:text-primary/80 transition-colors pt-1">
+                Ver todos os projetos →
+              </a>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Google connect banner if not connected */}
         {!gcalToken && (
           <Card className="bg-card border-border border-dashed">
@@ -646,8 +722,8 @@ export default function CalendarioPage() {
                       <span className="text-[10px] text-muted-foreground">
                         {weekDayLabels[weekDays[ev.day]?.getDay() ?? ev.day]}, {String(Math.floor(ev.startH)).padStart(2,'0')}h
                       </span>
-                      <Badge className={`text-[9px] px-1 h-3.5 ${typeColor[ev.type]}`}>
-                        {ev.type === 'google' ? 'Google' : ev.type}
+                      <Badge className={`text-[9px] px-1 h-3.5 ${typeColor[ev.type as EventType] ?? ''}`}>
+                        {typeLabels[ev.type as EventType] ?? ev.type}
                       </Badge>
                     </div>
                   </div>
