@@ -159,10 +159,13 @@ function assignColumns(events: CalEvent[]): { ev: CalEvent; col: number; totalCo
 type EditForm = {
   title: string
   client: string
+  description: string
   type: EventType
   startH: string // "HH:MM"
   endH: string
   dayIdx: number
+  dateStr: string // "YYYY-MM-DD" – used when Google is connected
+  isAllDay: boolean
   isNew: boolean
 }
 
@@ -291,25 +294,37 @@ export default function CalendarioPage() {
 
   function openCreate() {
     const defaultDay = todayIdx >= 0 ? todayIdx : 0
+    const todayDate  = weekDays[defaultDay] ?? new Date()
+    const pad = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
     const placeholder: CalEvent = {
       id: `new-${Date.now()}`, title: '', client: '',
       type: 'meeting', day: defaultDay, startH: 9, endH: 10,
       color: eventBgColor['meeting'],
     }
     setEditingEvent(placeholder)
-    setEditForm({ title: '', client: '', type: 'meeting', startH: '09:00', endH: '10:00', dayIdx: defaultDay, isNew: true })
+    setEditForm({
+      title: '', client: '', description: '', type: 'meeting',
+      startH: '09:00', endH: '10:00',
+      dayIdx: defaultDay, dateStr: pad(todayDate),
+      isAllDay: false, isNew: true,
+    })
   }
 
   function openEdit(ev: CalEvent) {
     if (ev.type === 'google') return
+    const day = weekDays[ev.day] ?? new Date()
+    const pad = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
     setEditingEvent(ev)
     setEditForm({
       title:  ev.title,
       client: ev.client,
+      description: '',
       type:   ev.type,
       startH: toTimeStr(ev.startH),
       endH:   toTimeStr(ev.endH),
       dayIdx: ev.day,
+      dateStr: pad(day),
+      isAllDay: false,
       isNew:  false,
     })
   }
@@ -321,18 +336,23 @@ export default function CalendarioPage() {
       // Criar no Google Calendar
       setSavingEvent(true)
       try {
-        const day = weekDays[editForm.dayIdx]
+        const dateStr = editForm.dateStr
         const [startHH, startMM] = editForm.startH.split(':')
         const [endHH,   endMM  ] = editForm.endH.split(':')
-        const pad = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-        const dateStr = pad(day)
 
-        const body = {
-          summary:     editForm.title,
-          description: editForm.client || undefined,
-          start: { dateTime: `${dateStr}T${startHH}:${startMM}:00`, timeZone: 'America/Sao_Paulo' },
-          end:   { dateTime: `${dateStr}T${endHH}:${endMM}:00`,   timeZone: 'America/Sao_Paulo' },
-        }
+        const body = editForm.isAllDay
+          ? {
+              summary:     editForm.title,
+              description: editForm.description || undefined,
+              start: { date: dateStr },
+              end:   { date: dateStr },
+            }
+          : {
+              summary:     editForm.title,
+              description: editForm.description || undefined,
+              start: { dateTime: `${dateStr}T${startHH}:${startMM}:00`, timeZone: 'America/Sao_Paulo' },
+              end:   { dateTime: `${dateStr}T${endHH}:${endMM}:00`,   timeZone: 'America/Sao_Paulo' },
+            }
 
         const res = await fetch('/api/calendar/criar-evento', {
           method: 'POST',
@@ -341,7 +361,14 @@ export default function CalendarioPage() {
         })
 
         if (res.ok) {
-          await fetchGoogleEvents(gcalToken, weekDays)
+          // navigate week to show the created event's date
+          const created = new Date(dateStr)
+          const todayW  = new Date()
+          todayW.setHours(0,0,0,0)
+          const diffDays = Math.round((created.getTime() - todayW.getTime()) / 86400000)
+          const newOffset = Math.floor((diffDays + todayW.getDay()) / 7)
+          setWeekOffset(newOffset)
+          await fetchGoogleEvents(gcalToken, getWeekDays(newOffset))
         } else {
           const err = await res.json()
           setGcalError(`Erro ao criar evento: ${err?.error?.message ?? res.status}`)
@@ -646,7 +673,7 @@ export default function CalendarioPage() {
           </CardContent>
         </Card>
       </div>
-      {/* ── Edit modal ── */}
+      {/* ── Event modal ── */}
       {editingEvent && editForm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -654,12 +681,23 @@ export default function CalendarioPage() {
         >
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
             {/* Header */}
-            <div className={`px-5 py-4 flex items-center justify-between border-b border-border ${eventBgColor[editForm.type]} bg-opacity-30`}>
-              <div className="flex items-center gap-2">
-                <span>{typeIcon[editForm.type]}</span>
+            <div className="px-5 py-4 flex items-center justify-between border-b border-border">
+              <div className="flex items-center gap-2.5">
+                {editForm.isNew && gcalToken
+                  ? <Calendar size={15} className="text-sky-400" />
+                  : <span>{typeIcon[editForm.type]}</span>
+                }
                 <p className="text-sm font-semibold text-foreground">
-                  {editForm.isNew ? 'Novo evento' : 'Editar evento'}
+                  {editForm.isNew
+                    ? gcalToken ? 'Criar no Google Agenda' : 'Novo evento'
+                    : 'Editar evento'
+                  }
                 </p>
+                {editForm.isNew && gcalToken && (
+                  <span className="text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/20 rounded px-1.5 py-0.5">
+                    {gcalEmail}
+                  </span>
+                )}
               </div>
               <button
                 onClick={() => { setEditingEvent(null); setEditForm(null) }}
@@ -671,101 +709,154 @@ export default function CalendarioPage() {
 
             {/* Form */}
             <div className="p-5 space-y-4">
+              {/* Title */}
               <div>
-                <label className="block text-xs font-medium text-foreground/80 mb-1.5">Título</label>
+                <label className="block text-xs font-medium text-foreground/80 mb-1.5">Título <span className="text-destructive">*</span></label>
                 <input
                   autoFocus
                   value={editForm.title}
                   onChange={e => setEditForm(f => f && ({ ...f, title: e.target.value }))}
+                  onKeyDown={e => e.key === 'Enter' && editForm.title.trim() && saveEdit()}
                   placeholder="Ex: Reunião com cliente"
                   className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-foreground/80 mb-1.5">Cliente</label>
-                <input
-                  value={editForm.client}
-                  onChange={e => setEditForm(f => f && ({ ...f, client: e.target.value }))}
-                  placeholder="Nome do cliente (opcional)"
-                  className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              {/* Description (Google) or Client (local) */}
+              {editForm.isNew && gcalToken ? (
                 <div>
-                  <label className="block text-xs font-medium text-foreground/80 mb-1.5">Tipo</label>
-                  <select
-                    value={editForm.type}
-                    onChange={e => setEditForm(f => f && ({ ...f, type: e.target.value as EventType }))}
-                    className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                  >
-                    {(Object.keys(typeLabels) as EventType[]).filter(t => t !== 'google').map(t => (
-                      <option key={t} value={t}>{typeLabels[t]}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-medium text-foreground/80 mb-1.5">Descrição</label>
+                  <textarea
+                    value={editForm.description}
+                    onChange={e => setEditForm(f => f && ({ ...f, description: e.target.value }))}
+                    placeholder="Adicione uma descrição (opcional)"
+                    rows={2}
+                    className="w-full resize-none rounded-lg bg-muted border border-border px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                  />
                 </div>
+              ) : (
                 <div>
-                  <label className="block text-xs font-medium text-foreground/80 mb-1.5">Dia</label>
-                  <select
-                    value={editForm.dayIdx}
-                    onChange={e => setEditForm(f => f && ({ ...f, dayIdx: Number(e.target.value) }))}
-                    className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                  >
-                    {weekDays.map((d, i) => (
-                      <option key={i} value={i}>
-                        {weekDayLabels[d.getDay()]} {d.getDate()}/{d.getMonth() + 1}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-foreground/80 mb-1.5">Início</label>
+                  <label className="block text-xs font-medium text-foreground/80 mb-1.5">Cliente</label>
                   <input
-                    type="time"
-                    value={editForm.startH}
-                    onChange={e => setEditForm(f => f && ({ ...f, startH: e.target.value }))}
+                    value={editForm.client}
+                    onChange={e => setEditForm(f => f && ({ ...f, client: e.target.value }))}
+                    placeholder="Nome do cliente (opcional)"
                     className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground/80 mb-1.5">Fim</label>
-                  <input
-                    type="time"
-                    value={editForm.endH}
-                    onChange={e => setEditForm(f => f && ({ ...f, endH: e.target.value }))}
-                    className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                  />
-                </div>
+              )}
+
+              {/* Date row */}
+              <div className={`grid gap-3 ${editForm.isNew && gcalToken ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                {editForm.isNew && gcalToken ? (
+                  /* Google: free date picker */
+                  <div>
+                    <label className="block text-xs font-medium text-foreground/80 mb-1.5">Data <span className="text-destructive">*</span></label>
+                    <input
+                      type="date"
+                      value={editForm.dateStr}
+                      onChange={e => setEditForm(f => f && ({ ...f, dateStr: e.target.value }))}
+                      className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all cursor-pointer"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-foreground/80 mb-1.5">Tipo</label>
+                      <select
+                        value={editForm.type}
+                        onChange={e => setEditForm(f => f && ({ ...f, type: e.target.value as EventType }))}
+                        className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                      >
+                        {(Object.keys(typeLabels) as EventType[]).filter(t => t !== 'google').map(t => (
+                          <option key={t} value={t}>{typeLabels[t]}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-foreground/80 mb-1.5">Dia</label>
+                      <select
+                        value={editForm.dayIdx}
+                        onChange={e => setEditForm(f => f && ({ ...f, dayIdx: Number(e.target.value) }))}
+                        className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                      >
+                        {weekDays.map((d, i) => (
+                          <option key={i} value={i}>
+                            {weekDayLabels[d.getDay()]} {d.getDate()}/{d.getMonth() + 1}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
               </div>
+
+              {/* All-day toggle (Google only) */}
+              {editForm.isNew && gcalToken && (
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <div
+                    onClick={() => setEditForm(f => f && ({ ...f, isAllDay: !f.isAllDay }))}
+                    className={`w-8 h-4.5 rounded-full transition-colors relative ${editForm.isAllDay ? 'bg-primary' : 'bg-muted border border-border'}`}
+                    style={{ height: '18px', width: '32px' }}
+                  >
+                    <span
+                      className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${editForm.isAllDay ? 'translate-x-[14px]' : 'translate-x-0.5'}`}
+                    />
+                  </div>
+                  <span className="text-xs text-foreground/80">Dia inteiro</span>
+                </label>
+              )}
+
+              {/* Time pickers */}
+              {!editForm.isAllDay && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground/80 mb-1.5">Início</label>
+                    <input
+                      type="time"
+                      value={editForm.startH}
+                      onChange={e => setEditForm(f => f && ({ ...f, startH: e.target.value }))}
+                      className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground/80 mb-1.5">Fim</label>
+                    <input
+                      type="time"
+                      value={editForm.endH}
+                      onChange={e => setEditForm(f => f && ({ ...f, endH: e.target.value }))}
+                      className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
             <div className="px-5 pb-5 flex items-center gap-2">
               <Button
                 size="sm"
-                className="h-8 text-xs bg-primary hover:bg-primary/90 flex-1"
+                className={`h-8 text-xs flex-1 ${editForm.isNew && gcalToken ? 'bg-sky-600 hover:bg-sky-500' : 'bg-primary hover:bg-primary/90'}`}
                 onClick={saveEdit}
-                disabled={!editForm.title.trim() || savingEvent}
+                disabled={!editForm.title.trim() || (editForm.isNew && gcalToken && !editForm.dateStr) || savingEvent}
               >
                 {savingEvent
-                  ? <><Loader2 size={12} className="animate-spin mr-1" /> Salvando...</>
+                  ? <><Loader2 size={12} className="animate-spin mr-1" /> Criando...</>
                   : editForm.isNew
-                    ? gcalToken ? 'Criar no Google Agenda' : 'Criar evento'
+                    ? gcalToken ? <><Calendar size={12} /> Criar no Google Agenda</> : 'Criar evento'
                     : 'Salvar alterações'
                 }
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
-                onClick={deleteEvent}
-              >
-                <Trash2 size={13} />
-              </Button>
+              {!editForm.isNew && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
+                  onClick={deleteEvent}
+                >
+                  <Trash2 size={13} />
+                </Button>
+              )}
               {editingEvent.type === 'google' && (
                 <a
                   href="https://calendar.google.com"
