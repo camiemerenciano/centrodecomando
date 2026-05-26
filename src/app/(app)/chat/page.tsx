@@ -377,27 +377,29 @@ export default function ChatPage() {
         )}
 
         <nav className="px-2 py-2 space-y-0.5 overflow-y-auto">
-          {canais.map(canal => (
-            <button
-              key={canal.id}
-              onClick={() => { setAtivo(canal); setModo('canal') }}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all text-left group ${
-                modo === 'canal' && ativo?.id === canal.id
-                  ? 'bg-primary/15 text-primary border border-primary/20'
-                  : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent'
-              }`}
-            >
-              <Hash size={13} className="shrink-0 opacity-70" />
-              <span className="truncate flex-1">{canal.nome}</span>
-              <span
-                role="button"
-                onClick={(e) => apagarCanal(canal, e)}
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all p-0.5 rounded"
+          {canais.map(canal => {
+            const ativo_ = modo === 'canal' && ativo?.id === canal.id
+            return (
+              <div
+                key={canal.id}
+                className={`group flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all cursor-pointer ${
+                  ativo_
+                    ? 'bg-primary/15 text-primary border border-primary/20'
+                    : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent'
+                }`}
+                onClick={() => { setAtivo(canal); setModo('canal') }}
               >
-                <Trash2 size={11} />
-              </span>
-            </button>
-          ))}
+                <Hash size={13} className="shrink-0 opacity-70" />
+                <span className="truncate flex-1">{canal.nome}</span>
+                <button
+                  onClick={(e) => apagarCanal(canal, e)}
+                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all p-0.5 rounded shrink-0"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            )
+          })}
         </nav>
 
         {/* Divisor */}
