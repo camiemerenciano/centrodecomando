@@ -84,7 +84,7 @@ function fromRow(r: any): OpTask {
     conversationOrigin: r.conversation_origin ?? null,
     createdAt:          r.created_at ?? new Date().toISOString(),
     projetoId:          r.projeto_id ?? null,
-    projetoNome:        r.projeto_nome ?? null,
+    projetoNome:        r.projetos?.nome ?? null,
   }
 }
 
@@ -594,7 +594,7 @@ export function TarefasModule() {
       setUserId(user.id)
 
       const [{ data: tarefasData }, { data: clientesData }] = await Promise.all([
-        supabase.from('tarefas').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
+        supabase.from('tarefas').select('*, projetos(nome)').eq('user_id', user.id).order('created_at', { ascending: true }),
         supabase.from('clientes').select('name').eq('user_id', user.id).order('name'),
       ])
 
