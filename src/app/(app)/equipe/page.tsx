@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Plus, Search, Mail, Shield, User, Crown, CheckSquare, Users, X, Send, Loader2 } from 'lucide-react'
+import { Plus, Search, Mail, Shield, User, Crown, CheckSquare, Users, X, Send, Loader2, Trash2 } from 'lucide-react'
 
 type Role = 'owner' | 'admin' | 'member'
 
@@ -114,6 +114,7 @@ export default function EquipePage() {
   const [members, setMembers]         = useState<Member[]>([])
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
+  const [deletingId, setDeletingId]   = useState<string | null>(null)
 
   async function fetchMembers() {
     try {
@@ -123,6 +124,17 @@ export default function EquipePage() {
       setMembers(data.map(m => ({ id: m.id, name: m.nome, email: m.email, role: 'member' as Role })))
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function deleteMember(member: Member) {
+    if (!confirm(`Excluir ${member.name} (${member.email})? Todos os dados da conta serão apagados.`)) return
+    setDeletingId(member.id)
+    try {
+      const res = await fetch(`/api/team/members/${member.id}`, { method: 'DELETE' })
+      if (res.ok) setMembers(prev => prev.filter(m => m.id !== member.id))
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -207,6 +219,16 @@ export default function EquipePage() {
                     <p className="text-[10px] text-muted-foreground">{member.email}</p>
                   </div>
                 </div>
+                <button
+                  onClick={() => deleteMember(member)}
+                  disabled={deletingId === member.id}
+                  className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-40"
+                >
+                  {deletingId === member.id
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : <Trash2 size={14} />
+                  }
+                </button>
               </div>
             </CardContent>
           </Card>
