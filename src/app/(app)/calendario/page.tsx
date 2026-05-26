@@ -668,19 +668,21 @@ export default function CalendarioPage() {
                           <div
                             key={ev.id}
                             onClick={() => openEdit(ev)}
-                            className={`absolute rounded-md border px-1.5 py-1 cursor-pointer hover:brightness-110 transition-all text-[10px] font-medium overflow-hidden ${ev.color} ${ev.type !== 'google' ? 'hover:ring-1 hover:ring-white/20' : ''}`}
+                            className={`absolute rounded-md border px-1.5 py-1 cursor-pointer hover:brightness-110 transition-all overflow-hidden flex flex-col ${ev.color} ${ev.type !== 'google' ? 'hover:ring-1 hover:ring-white/20' : ''}`}
                             style={{
                               top:    `${(ev.startH - 8) * 64}px`,
-                              height: `${Math.max(20, (ev.endH - ev.startH) * 64 - 4)}px`,
+                              height: `${Math.max(22, (ev.endH - ev.startH) * 64 - 4)}px`,
                               left:   `calc(${col * w}% + 2px)`,
                               width:  `calc(${w}% - ${totalCols > 1 ? 3 : 4}px)`,
                             }}
                           >
-                            <div className="flex items-start gap-1 mb-0.5">
-                              <span className="shrink-0 mt-px">{typeIcon[ev.type]}</span>
-                              <span className="break-words leading-tight">{ev.title}</span>
+                            <div className="flex items-center gap-1 min-w-0 w-full">
+                              <span className="shrink-0">{typeIcon[ev.type]}</span>
+                              <span className="text-[10px] font-medium truncate leading-tight flex-1 min-w-0">{ev.title}</span>
                             </div>
-                            <p className="text-[9px] opacity-70 break-words leading-tight">{ev.client}</p>
+                            {(ev.endH - ev.startH) > 0.75 && (
+                              <p className="text-[9px] opacity-70 truncate leading-tight mt-0.5 w-full">{ev.client}</p>
+                            )}
                           </div>
                         )
                       })}
