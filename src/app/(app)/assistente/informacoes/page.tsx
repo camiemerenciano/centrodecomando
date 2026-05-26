@@ -323,7 +323,7 @@ export default function InformacoesPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1">Assistente IA</p>
-          <h2 className="text-xl font-bold text-foreground">Configuração da Lunna</h2>
+          <h2 className="text-xl font-bold text-foreground">Configuração da IA</h2>
           <p className="text-xs text-muted-foreground mt-1">
             Defina identidade, personalidade e regras de comportamento da sua IA.
           </p>
