@@ -8,16 +8,21 @@ import { Button } from '@/components/ui/button'
 import {
   Plus, ChevronLeft, ChevronRight,
   AtSign, Video, FileText, Calendar,
-  RefreshCw, Loader2, AlertCircle, X, Trash2, ExternalLink, FolderOpen,
+  RefreshCw, Loader2, AlertCircle, X, Trash2, ExternalLink, FolderOpen, CheckSquare,
 } from 'lucide-react'
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-type EventType = 'post' | 'reel' | 'story' | 'meeting' | 'deadline' | 'google' | 'projeto'
+type EventType = 'post' | 'reel' | 'story' | 'meeting' | 'deadline' | 'google' | 'projeto' | 'tarefa'
 
 interface Projeto {
   id: string; nome: string; cliente: string; cor: string
   data_inicio: string | null; data_fim: string | null; status: string
+}
+
+interface Tarefa {
+  id: string; title: string; client: string
+  due_date: string | null; status: string
 }
 
 interface CalEvent {
@@ -44,6 +49,7 @@ const typeIcon: Record<EventType, React.ReactNode> = {
   deadline: <FileText size={10} />,
   google:   <Calendar size={10} />,
   projeto:  <FolderOpen size={10} />,
+  tarefa:   <CheckSquare size={10} />,
 }
 
 const typeColor: Record<EventType, string> = {
@@ -54,6 +60,7 @@ const typeColor: Record<EventType, string> = {
   deadline: 'bg-red-500/15 text-red-400 border-0',
   google:   'bg-sky-500/15 text-sky-400 border-0',
   projeto:  'bg-violet-500/15 text-violet-400 border-0',
+  tarefa:   'bg-emerald-500/15 text-emerald-400 border-0',
 }
 
 const eventBgColor: Record<EventType, string> = {
@@ -64,11 +71,12 @@ const eventBgColor: Record<EventType, string> = {
   deadline: 'bg-red-500/20 border-red-500/40 text-red-300',
   google:   'bg-sky-500/15 border-sky-500/30 text-sky-200',
   projeto:  'bg-violet-500/15 border-violet-500/30 text-violet-200',
+  tarefa:   'bg-emerald-500/15 border-emerald-500/30 text-emerald-200',
 }
 
 const typeLabels: Record<EventType, string> = {
   post: 'Post', reel: 'Reel', story: 'Story',
-  meeting: 'Reunião', deadline: 'Prazo', google: 'Google', projeto: 'Projeto',
+  meeting: 'Reunião', deadline: 'Prazo', google: 'Google', projeto: 'Projeto', tarefa: 'Tarefa',
 }
 
 const staticEvents: CalEvent[] = []
@@ -201,6 +209,7 @@ export default function CalendarioPage() {
   const [editForm, setEditForm]         = useState<EditForm | null>(null)
   const [savingEvent, setSavingEvent]   = useState(false)
   const [projetos, setProjetos]         = useState<Projeto[]>([])
+  const [tarefas, setTarefas]           = useState<Tarefa[]>([])
 
   const weekDays = getWeekDays(weekOffset)
   const today    = new Date()
@@ -210,10 +219,20 @@ export default function CalendarioPage() {
     d.getDate()     === today.getDate()
   )
 
-  // Load projetos on mount
+  // Load projetos and tarefas on mount
   useEffect(() => {
     fetch('/api/projetos').then(r => r.ok ? r.json() : []).then(data => {
       if (Array.isArray(data)) setProjetos(data)
+    })
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data } = await supabase
+        .from('tarefas')
+        .select('id, title, client, due_date, status')
+        .eq('user_id', user.id)
+        .not('due_date', 'is', null)
+      if (data) setTarefas(data)
     })
   }, [])
 
@@ -247,6 +266,31 @@ export default function CalendarioPage() {
     }
     return events
   }, [projetos, weekDays])
+
+  // Map tasks to CalEvents for the current week (only tasks with due_date, not concluded)
+  const taskEvents = useMemo<CalEvent[]>(() => {
+    return tarefas
+      .filter(t => !!t.due_date && t.status !== 'concluido')
+      .flatMap(t => {
+        const d = new Date(t.due_date!)
+        const dayIdx = weekDays.findIndex(wd =>
+          wd.getFullYear() === d.getFullYear() &&
+          wd.getMonth()    === d.getMonth() &&
+          wd.getDate()     === d.getDate()
+        )
+        if (dayIdx === -1) return []
+        return [{
+          id: `tarefa-${t.id}`,
+          title: t.title,
+          client: t.client || 'Tarefa',
+          type: 'tarefa' as EventType,
+          day: dayIdx,
+          startH: 8,
+          endH: 8.5,
+          color: eventBgColor['tarefa'],
+        }]
+      })
+  }, [tarefas, weekDays])
 
   // Load Google token on mount — always uses the current user's own calendar
   useEffect(() => {
@@ -337,7 +381,7 @@ export default function CalendarioPage() {
     else setGoogleEvents([])
   }, [gcalToken, weekOffset]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const allEvents = [...localEvents, ...googleEvents, ...projectEvents]
+  const allEvents = [...localEvents, ...googleEvents, ...projectEvents, ...taskEvents]
 
   function openCreate() {
     const defaultDay = todayIdx >= 0 ? todayIdx : 0
