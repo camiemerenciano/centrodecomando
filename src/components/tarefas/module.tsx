@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react'
 import {
   Plus, LayoutGrid, List, X, Clock, MessageSquare,
   Circle, PlayCircle, Eye, CheckCircle2, Pencil, Hourglass,
-  Trash2, ChevronDown, ChevronLeft, ChevronRight, GanttChart,
+  Trash2, ChevronDown, ChevronLeft, ChevronRight, GanttChart, FolderOpen,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +15,8 @@ import { createClient } from '@/lib/supabase/client'
 
 type OpStatus = 'novo' | 'em_andamento' | 'aguardando_cliente' | 'revisao' | 'concluido'
 type Priority = 'low' | 'medium' | 'high' | 'urgent'
+
+interface Projeto { id: string; nome: string; cor: string }
 
 interface OpTask {
   id: string
@@ -28,6 +30,8 @@ interface OpTask {
   status: OpStatus
   conversationOrigin: string | null
   createdAt: string
+  projetoId: string | null
+  projetoNome: string | null
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -79,6 +83,8 @@ function fromRow(r: any): OpTask {
     status:             (r.status ?? 'novo') as OpStatus,
     conversationOrigin: r.conversation_origin ?? null,
     createdAt:          r.created_at ?? new Date().toISOString(),
+    projetoId:          r.projeto_id ?? null,
+    projetoNome:        r.projeto_nome ?? null,
   }
 }
 
@@ -341,6 +347,13 @@ function TaskCard({
 
       {task.client && <p className="text-xs text-muted-foreground">{task.client}</p>}
 
+      {task.projetoNome && (
+        <div className="flex items-center gap-1">
+          <FolderOpen size={9} className="text-violet-400 shrink-0" />
+          <span className="text-[10px] text-violet-400 truncate">{task.projetoNome}</span>
+        </div>
+      )}
+
       {task.conversationOrigin && (
         <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
           <MessageSquare size={9} />
@@ -395,18 +408,20 @@ function TaskCard({
 // ─── TaskFormPanel ────────────────────────────────────────────────────────────
 
 function TaskFormPanel({
-  task, onSave, onClose, clientNames, memberNames,
+  task, onSave, onClose, clientNames, memberNames, projetos,
 }: {
   task: Partial<OpTask> | null
   onSave: (t: OpTask) => void
   onClose: () => void
   clientNames: string[]
   memberNames: string[]
+  projetos: Projeto[]
 }) {
   const isEdit = !!task?.id
   const [form, setForm] = useState<Partial<OpTask>>({
     title: '', description: '', client: '', assignee: '', assigneeInitials: '',
     dueDate: '', priority: 'medium', status: 'novo', conversationOrigin: null,
+    projetoId: null, projetoNome: null,
     ...task,
   })
 
@@ -435,6 +450,8 @@ function TaskFormPanel({
       status:             form.status!,
       conversationOrigin: form.conversationOrigin?.trim() || null,
       createdAt:          task?.createdAt ?? new Date().toISOString(),
+      projetoId:          form.projetoId ?? null,
+      projetoNome:        form.projetoNome ?? null,
     })
   }
 
@@ -516,6 +533,26 @@ function TaskFormPanel({
             </div>
           </div>
 
+          {projetos.length > 0 && (
+            <div>
+              <label className={lbl}>Projeto</label>
+              <div className="relative">
+                <select
+                  value={form.projetoId ?? ''}
+                  onChange={e => {
+                    const proj = projetos.find(p => p.id === e.target.value)
+                    setForm(f => ({ ...f, projetoId: e.target.value || null, projetoNome: proj?.nome ?? null }))
+                  }}
+                  className={inp + ' cursor-pointer appearance-none pr-7'}
+                >
+                  <option value="">— Sem projeto —</option>
+                  {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+                <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className={lbl}>Origem da conversa</label>
             <input value={form.conversationOrigin ?? ''} onChange={e => setForm(p => ({ ...p, conversationOrigin: e.target.value || null }))} placeholder="Ex: Ana Beatriz – Loja Bloom" className={inp} />
@@ -547,6 +584,7 @@ export function TarefasModule() {
   const [userId, setUserId]             = useState<string | null>(null)
   const [clientNames, setClientNames]   = useState<string[]>([])
   const [memberNames, setMemberNames]   = useState<string[]>([])
+  const [projetos, setProjetos]         = useState<Projeto[]>([])
   const supabase = createClient()
 
   useEffect(() => {
@@ -559,6 +597,10 @@ export function TarefasModule() {
         supabase.from('tarefas').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
         supabase.from('clientes').select('name').eq('user_id', user.id).order('name'),
       ])
+
+      fetch('/api/projetos').then(r => r.ok ? r.json() : []).then(data => {
+        if (Array.isArray(data)) setProjetos(data)
+      })
 
       if (tarefasData) setTasks(tarefasData.map(fromRow))
       if (clientesData) setClientNames(clientesData.map((c: { name: string }) => c.name).filter(Boolean))
@@ -612,6 +654,7 @@ export function TarefasModule() {
       priority:           task.priority,
       status:             task.status,
       conversation_origin: task.conversationOrigin,
+      projeto_id:         task.projetoId || null,
     }
     const isNew = !tasks.some(t => t.id === task.id)
     if (isNew) {
@@ -811,6 +854,7 @@ export function TarefasModule() {
           onClose={() => setShowForm(false)}
           clientNames={clientNames}
           memberNames={memberNames}
+          projetos={projetos}
         />
       )}
     </div>
