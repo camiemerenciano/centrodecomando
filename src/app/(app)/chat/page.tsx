@@ -139,6 +139,8 @@ export default function ChatPage() {
   const [mensagens, setMensagens]   = useState<Mensagem[]>([])
   const [novoCanal, setNovoCanal]   = useState(false)
   const [nomeCanal, setNomeCanal]   = useState('')
+  const [errCanal, setErrCanal]     = useState('')
+  const [criandoCanal, setCriandoCanal] = useState(false)
 
   // DMs
   const [modo, setModo]             = useState<Modo>('canal')
@@ -311,11 +313,19 @@ export default function ChatPage() {
 
   async function criarCanal(e: React.FormEvent) {
     e.preventDefault()
-    if (!nomeCanal.trim() || !user) return
-    const { data } = await supabase
+    if (!nomeCanal.trim() || !user || criandoCanal) return
+    setErrCanal('')
+    setCriandoCanal(true)
+    const nome = nomeCanal.trim().toLowerCase().replace(/\s+/g, '-')
+    const { data, error } = await supabase
       .from('chat_canais')
-      .insert({ nome: nomeCanal.trim().toLowerCase().replace(/\s+/g, '-'), user_id: user.id, criado_por: user.id })
+      .insert({ nome, user_id: user.id })
       .select().single()
+    setCriandoCanal(false)
+    if (error) {
+      setErrCanal(error.message)
+      return
+    }
     if (data) { setCanais(prev => [...prev, data]); setAtivo(data); setModo('canal') }
     setNomeCanal('')
     setNovoCanal(false)
@@ -367,12 +377,30 @@ export default function ChatPage() {
         </div>
 
         {novoCanal && (
-          <form onSubmit={criarCanal} className="px-3 py-2 border-b border-border">
+          <form onSubmit={criarCanal} className="px-3 py-2 border-b border-border space-y-1.5">
             <input
-              autoFocus value={nomeCanal} onChange={e => setNomeCanal(e.target.value)}
+              autoFocus value={nomeCanal} onChange={e => { setNomeCanal(e.target.value); setErrCanal('') }}
+              onKeyDown={e => e.key === 'Escape' && (setNovoCanal(false), setNomeCanal(''), setErrCanal(''))}
               placeholder="nome-do-canal"
               className="w-full rounded-md bg-muted border border-border px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
+            {errCanal && <p className="text-[10px] text-red-400 px-0.5">{errCanal}</p>}
+            <div className="flex gap-1.5">
+              <button
+                type="submit"
+                disabled={!nomeCanal.trim() || criandoCanal}
+                className="flex-1 h-6 rounded-md bg-primary text-white text-[11px] font-medium disabled:opacity-40 hover:bg-primary/90 transition-colors"
+              >
+                {criandoCanal ? '...' : 'Criar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setNovoCanal(false); setNomeCanal(''); setErrCanal('') }}
+                className="h-6 px-2 rounded-md bg-muted border border-border text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
           </form>
         )}
 
