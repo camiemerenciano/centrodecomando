@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { resolveOwnerId } from '@/lib/team'
 
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const ownerId = await resolveOwnerId(user.id)
+  const ownerId = user.id
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('pipeline_leads')
@@ -25,7 +24,7 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const ownerId = await resolveOwnerId(user.id)
+  const ownerId = user.id
   const body = await request.json()
   const admin = createAdminClient()
   const { data, error } = await admin
@@ -47,7 +46,7 @@ export async function PATCH(request: Request) {
   const { remote_jid, ...fields } = await request.json() as { remote_jid: string; [k: string]: unknown }
   if (!remote_jid) return NextResponse.json({ error: 'remote_jid required' }, { status: 400 })
 
-  const ownerId = await resolveOwnerId(user.id)
+  const ownerId = user.id
   const admin = createAdminClient()
 
   const { data: existing } = await admin

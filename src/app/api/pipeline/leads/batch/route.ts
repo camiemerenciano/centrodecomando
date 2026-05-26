@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { resolveOwnerId } from '@/lib/team'
 
 // POST /api/pipeline/leads/batch
 // Body: { leads: Array<{ remote_jid: string; title: string; client: string }> }
@@ -14,7 +13,7 @@ export async function POST(request: Request) {
   const { leads } = await request.json() as { leads: { remote_jid: string; title: string; client: string }[] }
   if (!Array.isArray(leads) || leads.length === 0) return NextResponse.json({ ok: true })
 
-  const ownerId = await resolveOwnerId(user.id)
+  const ownerId = user.id
   const admin = createAdminClient()
 
   // Get all existing remote_jids for this user to avoid overwriting

@@ -5,49 +5,19 @@ import { createClient } from '@/lib/supabase/client'
 import { Loader2, Plus, X, Save, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-// ── Default values (Lunna config) ──────────────────────────────────────────
+// ── Fallback vazio (usado só se o template da fabrica não existir) ──────────
 
 const DEFAULTS = {
-  nome:    'lunna',
-  cargo:   'assistente da propulsor criativo',
-  missao:  'entender o momento da marca, identificar necessidades e direcionar o cliente para o atendimento ideal de forma estratégica, natural e moderna.',
-  agencia: 'Propulsor Criativo',
-  tom_de_voz: ['moderno', 'informal', 'dinâmico', 'natural', 'estratégico', 'humano', 'leve', 'direto', 'jovem'],
-  regras: [
-    'sempre descobrir o nome da pessoa antes de qualquer informação',
-    'sempre descobrir o nome da empresa/marca logo em seguida',
-    'mensagens sempre curtas (máximo 2 linhas)',
-    'escrever tudo em minúsculo',
-    'conduzir como conversa natural do whatsapp',
-    'investigar antes de concluir',
-    'nunca informar valores fixos — os serviços são personalizados',
-    'sempre direcionar para call após qualificação',
-  ],
-  proibicoes: [
-    'mentir para agradar cliente',
-    'inventar resultados ou prometer crescimento garantido',
-    'usar textos longos',
-    'parecer robótica ou agir como bot',
-    'listar serviços sem contexto',
-    'usar linguagem formal',
-    'usar excesso de emojis',
-    'soar como coach',
-    'usar frases prontas de chatbot',
-    'usar letras maiúsculas desnecessariamente',
-    'mandar catálogo automático',
-  ],
-  emojis_permitidos: ['🚀', '✨', '🪐', '🌌', '☄️', '📡', '💫', '🔭'],
-  emojis_proibidos:  ['💗', '💕', '🌸', '❤️', '🥺', '😍', '😊'],
-  exemplos: [
-    'oii, antes de qualquer coisa, qual teu nome?',
-    'perfeitoo. e qual o nome da tua empresa ou marca?',
-    'agora me conta melhor o que vocês tão precisando',
-    'entendi. hoje vocês já produzem conteúdo?',
-    'acho que consigo te direcionar melhor entendendo mais da marca',
-    'isso provavelmente já tá impactando o posicionamento de vocês',
-    'perfeito, agora ficou bem mais claro',
-    'faz sentido pro momento de vocês?',
-  ],
+  nome:              '',
+  cargo:             '',
+  missao:            '',
+  agencia:           '',
+  tom_de_voz:        [] as string[],
+  regras:            [] as string[],
+  proibicoes:        [] as string[],
+  emojis_permitidos: [] as string[],
+  emojis_proibidos:  [] as string[],
+  exemplos:          [] as string[],
 }
 
 const TOM_OPTIONS = [
@@ -260,31 +230,50 @@ export default function InformacoesPage() {
         .maybeSingle()
 
       if (data) {
-        setNome(data.nome ?? DEFAULTS.nome)
-        setCargo(data.cargo ?? DEFAULTS.cargo)
-        setMissao(data.missao ?? DEFAULTS.missao)
-        setAgencia(data.agencia ?? DEFAULTS.agencia)
-        setTomDeVoz(data.tom_de_voz?.length    ? data.tom_de_voz    : DEFAULTS.tom_de_voz)
-        setRegras(data.regras?.length          ? data.regras        : DEFAULTS.regras)
-        setProibicoes(data.proibicoes?.length  ? data.proibicoes    : DEFAULTS.proibicoes)
-        setEmojisPermitidos(data.emojis_permitidos?.length ? data.emojis_permitidos : DEFAULTS.emojis_permitidos)
-        setEmojisProibidos(data.emojis_proibidos?.length   ? data.emojis_proibidos  : DEFAULTS.emojis_proibidos)
-        setExemplos(data.exemplos?.length      ? data.exemplos      : DEFAULTS.exemplos)
+        setNome(data.nome ?? '')
+        setCargo(data.cargo ?? '')
+        setMissao(data.missao ?? '')
+        setAgencia(data.agencia ?? '')
+        setTomDeVoz(data.tom_de_voz ?? [])
+        setRegras(data.regras ?? [])
+        setProibicoes(data.proibicoes ?? [])
+        setEmojisPermitidos(data.emojis_permitidos ?? [])
+        setEmojisProibidos(data.emojis_proibidos ?? [])
+        setExemplos(data.exemplos ?? [])
         setConhecimento(data.conhecimento ?? '')
       } else {
-        // First access — persist defaults so the webhook always has a config
+        // Primeira vez — busca template da conta fabrica
+        const tmplRes = await fetch('/api/config/template')
+        const { data: tmpl } = tmplRes.ok ? await tmplRes.json() : { data: null }
+        const base = tmpl ?? DEFAULTS
+
+        // identidade sempre em branco — cada cliente preenche o próprio
+        setNome('')
+        setCargo('')
+        setMissao('')
+        setAgencia('')
+        setConhecimento('')
+        // comportamento herdado do template
+        setTomDeVoz(base.tom_de_voz ?? [])
+        setRegras(base.regras ?? [])
+        setProibicoes(base.proibicoes ?? [])
+        setEmojisPermitidos(base.emojis_permitidos ?? [])
+        setEmojisProibidos(base.emojis_proibidos ?? [])
+        setExemplos(base.exemplos ?? [])
+
+        // persiste no banco para o webhook sempre ter um config
         await supabase.from('ai_config').upsert({
           user_id:           user.id,
-          nome:              DEFAULTS.nome,
-          cargo:             DEFAULTS.cargo,
-          missao:            DEFAULTS.missao,
-          agencia:           DEFAULTS.agencia,
-          tom_de_voz:        DEFAULTS.tom_de_voz,
-          regras:            DEFAULTS.regras,
-          proibicoes:        DEFAULTS.proibicoes,
-          emojis_permitidos: DEFAULTS.emojis_permitidos,
-          emojis_proibidos:  DEFAULTS.emojis_proibidos,
-          exemplos:          DEFAULTS.exemplos,
+          nome:              '',
+          cargo:             '',
+          missao:            '',
+          agencia:           '',
+          tom_de_voz:        base.tom_de_voz ?? [],
+          regras:            base.regras ?? [],
+          proibicoes:        base.proibicoes ?? [],
+          emojis_permitidos: base.emojis_permitidos ?? [],
+          emojis_proibidos:  base.emojis_proibidos ?? [],
+          exemplos:          base.exemplos ?? [],
           conhecimento:      '',
         }, { onConflict: 'user_id' })
       }

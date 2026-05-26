@@ -64,20 +64,6 @@ export default function RegisterPage() {
       return
     }
 
-    // Signed in immediately — create org via server route (bypasses RLS cookie issue)
-    const res = await fetch('/api/setup-org', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orgName: form.agencyName }),
-    })
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      setError(`Conta criada, mas erro ao configurar a agência. (${body.error ?? res.status})`)
-      setLoading(false)
-      return
-    }
-
     router.push('/dashboard')
     router.refresh()
   }
