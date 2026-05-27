@@ -41,7 +41,6 @@ const navGroups = [
     label: 'Inteligência',
     items: [
       { href: '/dashboard',                   label: 'Dashboard',        icon: LayoutDashboard },
-      { href: '/assistente/informacoes',       label: 'Informações',      icon: Info },
       { href: '/assistente/areas-de-atuacao', label: 'Áreas de Atuação', icon: Layers },
       { href: '/assistente/conexoes',          label: 'Conexões',         icon: Plug },
     ],
@@ -49,7 +48,6 @@ const navGroups = [
   {
     label: 'Comunicação',
     items: [
-      { href: '/mensagens', label: 'Mensagens', icon: MessageSquare },
       { href: '/pipeline',  label: 'Pipeline',  icon: FolderKanban },
       { href: '/clientes',  label: 'Clientes',  icon: Users },
     ],
