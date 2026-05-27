@@ -41,7 +41,6 @@ const navGroups = [
     label: 'Inteligência',
     items: [
       { href: '/dashboard',                   label: 'Dashboard',        icon: LayoutDashboard },
-      { href: '/assistente/areas-de-atuacao', label: 'Áreas de Atuação', icon: Layers },
       { href: '/assistente/conexoes',          label: 'Conexões',         icon: Plug },
       { href: '/pipeline',                     label: 'Pipeline',         icon: FolderKanban },
       { href: '/clientes',                     label: 'Clientes',         icon: Users },
