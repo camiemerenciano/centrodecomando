@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   if (!email) return NextResponse.json({ error: 'E-mail obrigatório' }, { status: 400 })
 
   const admin = createAdminClient()
-  const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`
+  const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL}/invite`
 
   // Tenta enviar o e-mail de convite via Supabase
   const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo })
