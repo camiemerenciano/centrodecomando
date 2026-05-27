@@ -64,7 +64,9 @@ export default function MudarSenhaPage() {
       return
     }
 
-    router.push('/portal')
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: perfil } = await supabase.from('perfis').select('role').eq('id', user!.id).maybeSingle()
+    router.push(perfil?.role === 'client' ? '/portal' : '/dashboard')
     router.refresh()
   }
 

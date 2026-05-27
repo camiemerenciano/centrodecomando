@@ -60,7 +60,7 @@ export async function POST(req: Request) {
     email,
     password: senha,
     email_confirm: true,
-    user_metadata: { full_name: nome },
+    user_metadata: { full_name: nome, must_change_password: true },
   })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
