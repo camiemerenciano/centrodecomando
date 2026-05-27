@@ -21,6 +21,8 @@ import {
   MessagesSquare,
   Building2,
   FolderOpen,
+  ShieldCheck,
+  Users,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -140,12 +142,18 @@ export function AppSidebar() {
 
       {/* Superadmin */}
       {role === 'superadmin' && (
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-2 pb-1.5 font-medium">
-            Admin
-          </p>
+        <div className="px-3 pb-2">
+          <div className="flex items-center gap-1.5 px-2 pb-1.5">
+            <ShieldCheck size={11} className="text-amber-400 shrink-0" />
+            <p className="text-[10px] uppercase tracking-widest text-amber-400/80 font-semibold">
+              Administrador
+            </p>
+          </div>
           <div className="space-y-0.5">
-            {[{ href: '/agencias', label: 'Agências', icon: Building2 }].map(({ href, label, icon: Icon }) => {
+            {[
+              { href: '/agencias', label: 'Agências', icon: Building2 },
+              { href: '/membros',  label: 'Membros',  icon: Users },
+            ].map(({ href, label, icon: Icon }) => {
               const active = pathname === href || pathname.startsWith(href + '/')
               return (
                 <Link
@@ -153,11 +161,11 @@ export function AppSidebar() {
                   href={href}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group ${
                     active
-                      ? 'bg-primary/15 text-primary border border-primary/20'
+                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
                       : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent'
                   }`}
                 >
-                  <Icon size={16} className={active ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-foreground transition-colors'} />
+                  <Icon size={16} className={active ? 'text-amber-400' : 'text-muted-foreground group-hover:text-sidebar-foreground transition-colors'} />
                   <span className="flex-1 truncate">{label}</span>
                 </Link>
               )
@@ -187,15 +195,29 @@ export function AppSidebar() {
       <div className="px-3 pb-4">
         <DropdownMenu>
           <DropdownMenuTrigger className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sidebar-accent transition-all text-left cursor-pointer bg-transparent border-0">
-              <Avatar className="w-7 h-7 shrink-0">
-                <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative shrink-0">
+                <Avatar className="w-7 h-7">
+                  <AvatarFallback className={`text-xs font-semibold ${role === 'superadmin' ? 'bg-amber-500/20 text-amber-400' : 'bg-primary/20 text-primary'}`}>
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                {role === 'superadmin' && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center shadow-sm" title="Administrador">
+                    <ShieldCheck size={8} className="text-black" />
+                  </span>
+                )}
+              </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-sidebar-foreground truncate">
-                  {(user?.user_metadata?.full_name as string | undefined) ?? 'Usuário'}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-medium text-sidebar-foreground truncate">
+                    {(user?.user_metadata?.full_name as string | undefined) ?? 'Usuário'}
+                  </p>
+                  {role === 'superadmin' && (
+                    <span className="shrink-0 text-[9px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/25 rounded px-1 py-px leading-none">
+                      ADMIN
+                    </span>
+                  )}
+                </div>
                 <p className="text-[10px] text-muted-foreground truncate">
                   {user?.email}
                 </p>

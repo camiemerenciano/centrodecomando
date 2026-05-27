@@ -18,24 +18,33 @@ function checkPassword(pw: string) {
 
 const RULES = [
   { key: 'length',  label: 'Mínimo 8 caracteres' },
-  { key: 'upper',   label: 'Pelo menos 1 letra maiúscula' },
-  { key: 'lower',   label: 'Pelo menos 1 letra minúscula' },
+  { key: 'upper',   label: 'Pelo menos 1 maiúscula' },
+  { key: 'lower',   label: 'Pelo menos 1 minúscula' },
   { key: 'special', label: 'Pelo menos 1 caractere especial (!@#$...)' },
 ] as const
 
+const inputClass =
+  'w-full rounded-lg bg-muted border border-border px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all'
+
 export default function RegisterPage() {
-  const router = useRouter()
+  const router   = useRouter()
   const supabase = createClient()
 
-  const [form, setForm] = useState({ fullName: '', agencyName: '', email: '', password: '' })
+  const [form, setForm] = useState({
+    firstName: '',
+    lastName:  '',
+    phone:     '',
+    email:     '',
+    password:  '',
+  })
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [emailSent, setEmailSent] = useState(false)
+  const [loading, setLoading]           = useState(false)
+  const [error, setError]               = useState<string | null>(null)
+  const [emailSent, setEmailSent]       = useState(false)
 
-  const checks = useMemo(() => checkPassword(form.password), [form.password])
+  const checks       = useMemo(() => checkPassword(form.password), [form.password])
   const passwordValid = Object.values(checks).every(Boolean)
-  const showChecks = form.password.length > 0
+  const showChecks    = form.password.length > 0
 
   function set(field: keyof typeof form) {
     return (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -53,11 +62,18 @@ export default function RegisterPage() {
 
     setLoading(true)
 
+    const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim()
+
     const { data, error: signUpError } = await supabase.auth.signUp({
-      email: form.email,
+      email:    form.email,
       password: form.password,
       options: {
-        data: { full_name: form.fullName },
+        data: {
+          full_name:  fullName,
+          first_name: form.firstName.trim(),
+          last_name:  form.lastName.trim(),
+          phone:      form.phone.trim(),
+        },
         emailRedirectTo: `${window.location.origin}/dashboard`,
       },
     })
@@ -88,9 +104,6 @@ export default function RegisterPage() {
     router.refresh()
   }
 
-  const inputClass =
-    'w-full rounded-lg bg-muted border border-border px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all'
-
   if (emailSent) {
     return (
       <div className="glass rounded-2xl p-8 shadow-2xl text-center space-y-4">
@@ -99,7 +112,8 @@ export default function RegisterPage() {
         </div>
         <h1 className="text-xl font-semibold text-foreground">Confirme seu e-mail</h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Enviamos um link de confirmação para <span className="text-foreground font-medium">{form.email}</span>.
+          Enviamos um link de confirmação para{' '}
+          <span className="text-foreground font-medium">{form.email}</span>.
           Clique no link para ativar sua conta e acessar o Orbit™.
         </p>
         <p className="text-xs text-muted-foreground">Não recebeu? Verifique a caixa de spam.</p>
@@ -118,22 +132,57 @@ export default function RegisterPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Nome + Sobrenome */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-foreground/80 mb-1.5">Seu nome</label>
-            <input required value={form.fullName} onChange={set('fullName')} placeholder="Maria Silva" className={inputClass} />
+            <label className="block text-sm font-medium text-foreground/80 mb-1.5">Nome</label>
+            <input
+              required
+              value={form.firstName}
+              onChange={set('firstName')}
+              placeholder="Maria"
+              className={inputClass}
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground/80 mb-1.5">Nome da agência</label>
-            <input required value={form.agencyName} onChange={set('agencyName')} placeholder="Agência Nexus" className={inputClass} />
+            <label className="block text-sm font-medium text-foreground/80 mb-1.5">Sobrenome</label>
+            <input
+              required
+              value={form.lastName}
+              onChange={set('lastName')}
+              placeholder="Silva"
+              className={inputClass}
+            />
           </div>
         </div>
 
+        {/* Telefone */}
         <div>
-          <label className="block text-sm font-medium text-foreground/80 mb-1.5">E-mail</label>
-          <input type="email" required value={form.email} onChange={set('email')} placeholder="voce@agencia.com" className={inputClass} />
+          <label className="block text-sm font-medium text-foreground/80 mb-1.5">Telefone</label>
+          <input
+            type="tel"
+            required
+            value={form.phone}
+            onChange={set('phone')}
+            placeholder="(11) 99999-9999"
+            className={inputClass}
+          />
         </div>
 
+        {/* E-mail */}
+        <div>
+          <label className="block text-sm font-medium text-foreground/80 mb-1.5">E-mail</label>
+          <input
+            type="email"
+            required
+            value={form.email}
+            onChange={set('email')}
+            placeholder="voce@agencia.com"
+            className={inputClass}
+          />
+        </div>
+
+        {/* Senha */}
         <div>
           <label className="block text-sm font-medium text-foreground/80 mb-1.5">Senha</label>
           <div className="relative">
@@ -159,7 +208,10 @@ export default function RegisterPage() {
               {RULES.map(({ key, label }) => {
                 const ok = checks[key]
                 return (
-                  <div key={key} className={`flex items-center gap-1.5 text-[11px] transition-colors ${ok ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                  <div
+                    key={key}
+                    className={`flex items-center gap-1.5 text-[11px] transition-colors ${ok ? 'text-emerald-400' : 'text-muted-foreground'}`}
+                  >
                     {ok
                       ? <CheckCircle2 size={11} className="shrink-0" />
                       : <XCircle size={11} className="shrink-0 text-muted-foreground/50" />
@@ -181,11 +233,10 @@ export default function RegisterPage() {
           disabled={loading || (showChecks && !passwordValid)}
           className="w-full h-10 bg-primary hover:bg-primary/90 glow-orange"
         >
-          {loading ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <><Rocket size={15} /> Criar conta gratuita</>
-          )}
+          {loading
+            ? <Loader2 size={16} className="animate-spin" />
+            : <><Rocket size={15} /> Criar conta gratuita</>
+          }
         </Button>
       </form>
 
