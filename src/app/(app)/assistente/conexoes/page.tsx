@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { QRCodeSVG } from 'qrcode.react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,209 +11,9 @@ import {
   RefreshCw,
   Loader2,
   Unplug,
-  Plug,
   Calendar,
-  MessageCircle,
   AlertCircle,
-  ExternalLink,
 } from 'lucide-react'
-
-// ── WhatsApp / Evolution ──────────────────────────────────────────────────────
-
-type WaStatus = 'disconnected' | 'saving' | 'connected'
-
-function WhatsAppCard() {
-  const [status, setStatus]       = useState<WaStatus>('disconnected')
-  const [formUrl, setFormUrl]     = useState('')
-  const [formKey, setFormKey]     = useState('')
-  const [formInst, setFormInst]   = useState('')
-  const [instance, setInstance]   = useState('')
-  const [error, setError]         = useState('')
-  const supabase = createClient()
-
-  async function saveEvoToSupabase(url: string, key: string, inst: string) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    await supabase.from('integracoes').upsert({
-      user_id:          user.id,
-      evo_api_url:      url,
-      evo_api_key:      key,
-      evo_instance:     inst,
-      evo_connected_at: new Date().toISOString(),
-    }, { onConflict: 'user_id' })
-    localStorage.setItem('evo_apiUrl',      url)
-    localStorage.setItem('evo_apiKey',      key)
-    localStorage.setItem('evo_instance',    inst)
-    localStorage.setItem('evo_connectedAt', new Date().toISOString())
-  }
-
-  async function clearEvoFromSupabase() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    await supabase.from('integracoes').upsert({
-      user_id:          user.id,
-      evo_api_url:      null,
-      evo_api_key:      null,
-      evo_instance:     null,
-      evo_connected_at: null,
-    }, { onConflict: 'user_id' })
-    localStorage.removeItem('evo_apiUrl')
-    localStorage.removeItem('evo_apiKey')
-    localStorage.removeItem('evo_instance')
-  }
-
-  // Restore from Supabase on mount
-  useEffect(() => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
-      const { data } = await supabase
-        .from('integracoes')
-        .select('evo_api_url, evo_api_key, evo_instance')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (data?.evo_api_url && data?.evo_api_key && data?.evo_instance) {
-        setInstance(data.evo_instance)
-        setFormUrl(data.evo_api_url)
-        setFormKey(data.evo_api_key)
-        setFormInst(data.evo_instance)
-        setStatus('connected')
-      }
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  async function handleConnect() {
-    const url  = formUrl.trim().replace(/\/$/, '')
-    const key  = formKey.trim()
-    const inst = formInst.trim()
-    if (!url || !key || !inst) { setError('Preencha todos os campos.'); return }
-    setError('')
-    setStatus('saving')
-    try {
-      // Verifica se a instância existe e está conectada
-      const res  = await fetch('/api/evolution/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiUrl: url, apiKey: key, instanceName: inst }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error ?? `Erro ${res.status}`)
-      await saveEvoToSupabase(url, key, inst)
-      setInstance(inst)
-      setStatus('connected')
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao conectar. Verifique as credenciais.')
-      setStatus('disconnected')
-    }
-  }
-
-  async function handleDisconnect() {
-    await clearEvoFromSupabase()
-    setStatus('disconnected')
-    setInstance('')
-    setError('')
-  }
-
-  return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-emerald-500/15 flex items-center justify-center shrink-0">
-              <MessageCircle size={22} className="text-emerald-400" />
-            </div>
-            <div>
-              <CardTitle className="text-base font-semibold">WhatsApp</CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">via Evolution API</p>
-            </div>
-          </div>
-          <StatusBadge status={status === 'saving' ? 'connecting' : status} />
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Receba e envie mensagens do WhatsApp diretamente no Orbit™.
-          Todas as conversas ficam centralizadas no módulo de Mensagens.
-        </p>
-
-        {error && (
-          <div className="rounded-lg bg-red-500/8 border border-red-500/20 p-3 flex items-center gap-2">
-            <AlertCircle size={14} className="text-red-400 shrink-0" />
-            <p className="text-xs text-red-400">{error}</p>
-          </div>
-        )}
-
-        {status === 'connected' ? (
-          <div className="rounded-lg bg-emerald-500/8 border border-emerald-500/20 p-3 flex items-center gap-3">
-            <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground">WhatsApp conectado</p>
-              <p className="text-xs text-muted-foreground truncate">{instance}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            <div>
-              <label className="block text-xs font-medium text-foreground/80 mb-1">URL da API</label>
-              <input
-                value={formUrl}
-                onChange={e => setFormUrl(e.target.value)}
-                placeholder="https://sua-evolution.com"
-                className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-foreground/80 mb-1">API Key</label>
-              <input
-                value={formKey}
-                onChange={e => setFormKey(e.target.value)}
-                placeholder="sua-api-key"
-                type="password"
-                className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-foreground/80 mb-1">Nome da instância</label>
-              <input
-                value={formInst}
-                onChange={e => setFormInst(e.target.value)}
-                placeholder="minha-instancia"
-                onKeyDown={e => e.key === 'Enter' && handleConnect()}
-                className="w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center gap-2 pt-1">
-          {status === 'connected' ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
-              onClick={handleDisconnect}
-            >
-              <Unplug size={13} /> Desconectar
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              className="h-8 text-xs bg-primary hover:bg-primary/90"
-              disabled={status === 'saving'}
-              onClick={handleConnect}
-            >
-              {status === 'saving'
-                ? <><Loader2 size={13} className="animate-spin" /> Conectando…</>
-                : <><Plug size={13} /> Conectar</>
-              }
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
 
 // ── Google Agenda ─────────────────────────────────────────────────────────────
 
@@ -241,7 +40,6 @@ function GoogleCalendarCard() {
     ]
   }
 
-  // Load from Supabase on mount — auto-refresh token if expired
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
@@ -255,7 +53,6 @@ function GoogleCalendarCard() {
 
       let accessToken = data.gcal_access_token
 
-      // Try to refresh the access token if we have a refresh token
       if (data.gcal_refresh_token) {
         try {
           const res = await fetch('/api/auth/google/refresh', {
@@ -266,7 +63,6 @@ function GoogleCalendarCard() {
           const refreshed = await res.json()
           if (refreshed.access_token) {
             accessToken = refreshed.access_token
-            // Persist the fresh token
             await supabase.from('integracoes').upsert({
               user_id:           user.id,
               gcal_access_token: refreshed.access_token,
@@ -382,7 +178,7 @@ function GoogleCalendarCard() {
     setSyncing(true)
     setSyncOk(false)
     try {
-      const now    = new Date()
+      const now     = new Date()
       const oneWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
       const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
       url.searchParams.set('timeMin', now.toISOString())
@@ -412,139 +208,136 @@ function GoogleCalendarCard() {
   }
 
   return (
-    <>
-
-      <Card className="bg-card border-border">
-        <CardHeader className="pb-4">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-sky-500/15 flex items-center justify-center shrink-0">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <rect x="3" y="4" width="18" height="17" rx="2" stroke="currentColor" strokeWidth="1.8" className="text-sky-400" />
-                  <path d="M16 2v4M8 2v4M3 9h18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-sky-400" />
-                  <rect x="8" y="13" width="3" height="3" rx="0.5" fill="currentColor" className="text-sky-400" />
-                  <rect x="13" y="13" width="3" height="3" rx="0.5" fill="currentColor" className="text-sky-400" />
-                </svg>
-              </div>
-              <div>
-                <CardTitle className="text-base font-semibold">Google Agenda</CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">via OAuth 2.0</p>
-              </div>
+    <Card className="bg-card border-border">
+      <CardHeader className="pb-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-sky-500/15 flex items-center justify-center shrink-0">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="4" width="18" height="17" rx="2" stroke="currentColor" strokeWidth="1.8" className="text-sky-400" />
+                <path d="M16 2v4M8 2v4M3 9h18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-sky-400" />
+                <rect x="8" y="13" width="3" height="3" rx="0.5" fill="currentColor" className="text-sky-400" />
+                <rect x="13" y="13" width="3" height="3" rx="0.5" fill="currentColor" className="text-sky-400" />
+              </svg>
             </div>
-            <StatusBadge status={status} />
+            <div>
+              <CardTitle className="text-base font-semibold">Google Agenda</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">via OAuth 2.0</p>
+            </div>
           </div>
-        </CardHeader>
+          <StatusBadge status={status} />
+        </div>
+      </CardHeader>
 
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Sincronize eventos e prazos com o Google Agenda. Postagens, reuniões e
-            deadlines aparecem automaticamente no Calendário do Orbit™.
-          </p>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Sincronize eventos e prazos com o Google Agenda. Postagens, reuniões e
+          deadlines aparecem automaticamente no Calendário do Orbit™.
+        </p>
 
-          {status === 'connecting' && (
-            <div className="rounded-lg bg-amber-500/8 border border-amber-500/20 p-3 flex items-center gap-3">
-              <Loader2 size={15} className="text-amber-400 animate-spin shrink-0" />
-              <div>
-                <p className="text-sm text-foreground">Aguardando autenticação…</p>
-                <p className="text-xs text-muted-foreground">Complete o login na janela do Google</p>
-              </div>
+        {status === 'connecting' && (
+          <div className="rounded-lg bg-amber-500/8 border border-amber-500/20 p-3 flex items-center gap-3">
+            <Loader2 size={15} className="text-amber-400 animate-spin shrink-0" />
+            <div>
+              <p className="text-sm text-foreground">Aguardando autenticação…</p>
+              <p className="text-xs text-muted-foreground">Complete o login na janela do Google</p>
             </div>
-          )}
+          </div>
+        )}
 
-          {authError && status === 'disconnected' && (
-            <div className="rounded-lg bg-red-500/8 border border-red-500/20 p-3 flex items-center gap-2">
-              <AlertCircle size={14} className="text-red-400 shrink-0" />
-              <p className="text-xs text-red-400">{authError}</p>
-            </div>
-          )}
+        {authError && status === 'disconnected' && (
+          <div className="rounded-lg bg-red-500/8 border border-red-500/20 p-3 flex items-center gap-2">
+            <AlertCircle size={14} className="text-red-400 shrink-0" />
+            <p className="text-xs text-red-400">{authError}</p>
+          </div>
+        )}
 
-          {status === 'connected' && (
-            <div className="space-y-3">
-              <div className="rounded-lg bg-sky-500/8 border border-sky-500/20 p-3 flex items-center gap-3">
-                <CheckCircle2 size={16} className="text-sky-400 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">{connectedName || 'Conta conectada'}</p>
-                  <p className="text-xs text-muted-foreground truncate">{connectedEmail}</p>
-                </div>
-                <button
-                  className="text-[10px] text-primary hover:text-primary/80 transition-colors shrink-0"
-                  onClick={openOAuthPopup}
-                >
-                  Trocar conta
-                </button>
+        {status === 'connected' && (
+          <div className="space-y-3">
+            <div className="rounded-lg bg-sky-500/8 border border-sky-500/20 p-3 flex items-center gap-3">
+              <CheckCircle2 size={16} className="text-sky-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">{connectedName || 'Conta conectada'}</p>
+                <p className="text-xs text-muted-foreground truncate">{connectedEmail}</p>
               </div>
-
-              <div>
-                <p className="text-xs font-medium text-foreground/80 mb-2">Agendas sincronizadas</p>
-                <div className="space-y-1.5">
-                  {calendars.map(cal => (
-                    <button
-                      key={cal.id}
-                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors group text-left"
-                      onClick={() => toggleCalendar(cal.id)}
-                    >
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-                        cal.selected ? 'bg-primary border-primary' : 'border-border group-hover:border-primary/50'
-                      }`}>
-                        {cal.selected && (
-                          <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-                            <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        )}
-                      </div>
-                      <span className="text-sm text-foreground truncate flex-1">{cal.name}</span>
-                      {cal.primary && (
-                        <Badge className="text-[10px] bg-primary/15 text-primary border-0 shrink-0">Principal</Badge>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
-                <AlertCircle size={12} className="shrink-0" />
-                Sincronização automática a cada 15 minutos
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center gap-2 pt-1">
-            {status === 'connected' ? (
-              <>
-                <Button variant="outline" size="sm" className="h-8 text-xs border-border" onClick={handleSync} disabled={syncing}>
-                  {syncing
-                    ? <><Loader2 size={13} className="animate-spin" /> Sincronizando…</>
-                    : syncOk
-                    ? <><CheckCircle2 size={13} className="text-emerald-400" /> Sincronizado!</>
-                    : <><RefreshCw size={13} /> Sincronizar agora</>
-                  }
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
-                  onClick={handleDisconnect}
-                >
-                  <Unplug size={13} /> Desconectar
-                </Button>
-              </>
-            ) : (
-              <Button
-                size="sm"
-                className="h-8 text-xs bg-primary hover:bg-primary/90"
-                disabled={status === 'connecting'}
+              <button
+                className="text-[10px] text-primary hover:text-primary/80 transition-colors shrink-0"
                 onClick={openOAuthPopup}
               >
-                {status === 'connecting'
-                  ? <><Loader2 size={13} className="animate-spin" /> Aguardando…</>
-                  : <><Calendar size={13} /> Conectar com Google</>
+                Trocar conta
+              </button>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-foreground/80 mb-2">Agendas sincronizadas</p>
+              <div className="space-y-1.5">
+                {calendars.map(cal => (
+                  <button
+                    key={cal.id}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors group text-left"
+                    onClick={() => toggleCalendar(cal.id)}
+                  >
+                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                      cal.selected ? 'bg-primary border-primary' : 'border-border group-hover:border-primary/50'
+                    }`}>
+                      {cal.selected && (
+                        <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                          <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-sm text-foreground truncate flex-1">{cal.name}</span>
+                    {cal.primary && (
+                      <Badge className="text-[10px] bg-primary/15 text-primary border-0 shrink-0">Principal</Badge>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+              <AlertCircle size={12} className="shrink-0" />
+              Sincronização automática a cada 15 minutos
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 pt-1">
+          {status === 'connected' ? (
+            <>
+              <Button variant="outline" size="sm" className="h-8 text-xs border-border" onClick={handleSync} disabled={syncing}>
+                {syncing
+                  ? <><Loader2 size={13} className="animate-spin" /> Sincronizando…</>
+                  : syncOk
+                  ? <><CheckCircle2 size={13} className="text-emerald-400" /> Sincronizado!</>
+                  : <><RefreshCw size={13} /> Sincronizar agora</>
                 }
               </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
+                onClick={handleDisconnect}
+              >
+                <Unplug size={13} /> Desconectar
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              className="h-8 text-xs bg-primary hover:bg-primary/90"
+              disabled={status === 'connecting'}
+              onClick={openOAuthPopup}
+            >
+              {status === 'connecting'
+                ? <><Loader2 size={13} className="animate-spin" /> Aguardando…</>
+                : <><Calendar size={13} /> Conectar com Google</>
+              }
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -579,7 +372,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function ConexoesPage() {
   return (
-    <div className="max-w-[860px] space-y-6">
+    <div className="max-w-[560px] space-y-6">
       <div>
         <h2 className="text-sm font-semibold text-foreground">Integrações ativas</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
@@ -587,10 +380,7 @@ export default function ConexoesPage() {
         </p>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <WhatsAppCard />
-        <GoogleCalendarCard />
-      </div>
+      <GoogleCalendarCard />
 
       <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 flex items-center gap-3">
         <AlertCircle size={15} className="text-muted-foreground shrink-0" />
