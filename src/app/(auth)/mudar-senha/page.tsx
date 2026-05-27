@@ -1,37 +1,58 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { Eye, EyeOff, Loader2, KeyRound } from 'lucide-react'
+import { Eye, EyeOff, Loader2, KeyRound, CheckCircle2, XCircle } from 'lucide-react'
+
+function checkPassword(pw: string) {
+  return {
+    length:  pw.length >= 8,
+    upper:   /[A-Z]/.test(pw),
+    lower:   /[a-z]/.test(pw),
+    special: /[^A-Za-z0-9]/.test(pw),
+  }
+}
+
+const RULES = [
+  { key: 'length',  label: 'Mínimo 8 caracteres' },
+  { key: 'upper',   label: 'Pelo menos 1 maiúscula' },
+  { key: 'lower',   label: 'Pelo menos 1 minúscula' },
+  { key: 'special', label: 'Pelo menos 1 caractere especial' },
+] as const
+
+const inputCls = 'w-full rounded-lg bg-muted border border-border px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all'
 
 export default function MudarSenhaPage() {
   const router   = useRouter()
   const supabase = createClient()
 
-  const [password, setPassword]   = useState('')
-  const [confirm, setConfirm]     = useState('')
-  const [show, setShow]           = useState(false)
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState<string | null>(null)
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm]   = useState('')
+  const [show, setShow]         = useState(false)
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState<string | null>(null)
+
+  const checks = useMemo(() => checkPassword(password), [password])
+  const passwordValid = Object.values(checks).every(Boolean)
+  const showChecks = password.length > 0
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
 
-    if (password !== confirm) {
-      setError('As senhas não coincidem.')
+    if (!passwordValid) {
+      setError('A senha não atende aos requisitos de segurança.')
       return
     }
-    if (password.length < 6) {
-      setError('A senha deve ter pelo menos 6 caracteres.')
+    if (password !== confirm) {
+      setError('As senhas não coincidem.')
       return
     }
 
     setLoading(true)
 
-    // Atualiza a senha e remove a flag
     const { error: updateError } = await supabase.auth.updateUser({
       password,
       data: { must_change_password: false },
@@ -43,7 +64,6 @@ export default function MudarSenhaPage() {
       return
     }
 
-    // Redireciona para o portal
     router.push('/portal')
     router.refresh()
   }
@@ -66,8 +86,8 @@ export default function MudarSenhaPage() {
               required
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="Mínimo 6 caracteres"
-              className="w-full rounded-lg bg-muted border border-border px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all pr-10"
+              placeholder="Crie uma senha forte"
+              className={`${inputCls} pr-10`}
             />
             <button
               type="button"
@@ -77,6 +97,23 @@ export default function MudarSenhaPage() {
               {show ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
           </div>
+
+          {showChecks && (
+            <div className="mt-2.5 space-y-1">
+              {RULES.map(({ key, label }) => {
+                const ok = checks[key]
+                return (
+                  <div key={key} className={`flex items-center gap-1.5 text-[11px] transition-colors ${ok ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                    {ok
+                      ? <CheckCircle2 size={11} className="shrink-0" />
+                      : <XCircle size={11} className="shrink-0 text-muted-foreground/50" />
+                    }
+                    {label}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         <div>
@@ -87,8 +124,11 @@ export default function MudarSenhaPage() {
             value={confirm}
             onChange={e => setConfirm(e.target.value)}
             placeholder="Repita a senha"
-            className="w-full rounded-lg bg-muted border border-border px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+            className={`${inputCls} ${confirm && confirm !== password ? 'border-destructive/60 focus:ring-destructive/40' : ''}`}
           />
+          {confirm && confirm !== password && (
+            <p className="text-[11px] text-destructive mt-1.5">As senhas não coincidem.</p>
+          )}
         </div>
 
         {error && (
@@ -97,7 +137,7 @@ export default function MudarSenhaPage() {
 
         <Button
           type="submit"
-          disabled={loading}
+          disabled={loading || (showChecks && !passwordValid) || (!!confirm && confirm !== password)}
           className="w-full h-10 bg-primary hover:bg-primary/90 glow-orange"
         >
           {loading

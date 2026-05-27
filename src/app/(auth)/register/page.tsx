@@ -1,26 +1,41 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { Eye, EyeOff, Loader2, Rocket } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Rocket, CheckCircle2, XCircle } from 'lucide-react'
+
+function checkPassword(pw: string) {
+  return {
+    length:  pw.length >= 8,
+    upper:   /[A-Z]/.test(pw),
+    lower:   /[a-z]/.test(pw),
+    special: /[^A-Za-z0-9]/.test(pw),
+  }
+}
+
+const RULES = [
+  { key: 'length',  label: 'Mínimo 8 caracteres' },
+  { key: 'upper',   label: 'Pelo menos 1 letra maiúscula' },
+  { key: 'lower',   label: 'Pelo menos 1 letra minúscula' },
+  { key: 'special', label: 'Pelo menos 1 caractere especial (!@#$...)' },
+] as const
 
 export default function RegisterPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [form, setForm] = useState({
-    fullName: '',
-    agencyName: '',
-    email: '',
-    password: '',
-  })
+  const [form, setForm] = useState({ fullName: '', agencyName: '', email: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [emailSent, setEmailSent] = useState(false)
+
+  const checks = useMemo(() => checkPassword(form.password), [form.password])
+  const passwordValid = Object.values(checks).every(Boolean)
+  const showChecks = form.password.length > 0
 
   function set(field: keyof typeof form) {
     return (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -30,6 +45,12 @@ export default function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+
+    if (!passwordValid) {
+      setError('A senha não atende aos requisitos de segurança.')
+      return
+    }
+
     setLoading(true)
 
     const { data, error: signUpError } = await supabase.auth.signUp({
@@ -51,7 +72,6 @@ export default function RegisterPage() {
       return
     }
 
-    // Email confirmation required — user object exists but session is null
     if (!data.session && data.user) {
       setEmailSent(true)
       setLoading(false)
@@ -100,15 +120,11 @@ export default function RegisterPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-foreground/80 mb-1.5">
-              Seu nome
-            </label>
+            <label className="block text-sm font-medium text-foreground/80 mb-1.5">Seu nome</label>
             <input required value={form.fullName} onChange={set('fullName')} placeholder="Maria Silva" className={inputClass} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground/80 mb-1.5">
-              Nome da agência
-            </label>
+            <label className="block text-sm font-medium text-foreground/80 mb-1.5">Nome da agência</label>
             <input required value={form.agencyName} onChange={set('agencyName')} placeholder="Agência Nexus" className={inputClass} />
           </div>
         </div>
@@ -124,10 +140,9 @@ export default function RegisterPage() {
             <input
               type={showPassword ? 'text' : 'password'}
               required
-              minLength={8}
               value={form.password}
               onChange={set('password')}
-              placeholder="Mínimo 8 caracteres"
+              placeholder="Crie uma senha forte"
               className={`${inputClass} pr-10`}
             />
             <button
@@ -138,26 +153,38 @@ export default function RegisterPage() {
               {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
           </div>
+
+          {showChecks && (
+            <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1">
+              {RULES.map(({ key, label }) => {
+                const ok = checks[key]
+                return (
+                  <div key={key} className={`flex items-center gap-1.5 text-[11px] transition-colors ${ok ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                    {ok
+                      ? <CheckCircle2 size={11} className="shrink-0" />
+                      : <XCircle size={11} className="shrink-0 text-muted-foreground/50" />
+                    }
+                    {label}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {error && (
-          <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-            {error}
-          </p>
+          <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{error}</p>
         )}
 
         <Button
           type="submit"
-          disabled={loading}
+          disabled={loading || (showChecks && !passwordValid)}
           className="w-full h-10 bg-primary hover:bg-primary/90 glow-orange"
         >
           {loading ? (
             <Loader2 size={16} className="animate-spin" />
           ) : (
-            <>
-              <Rocket size={15} />
-              Criar conta gratuita
-            </>
+            <><Rocket size={15} /> Criar conta gratuita</>
           )}
         </Button>
       </form>
