@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   MessageSquareDot,
   X,
+  CheckCheck,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -62,16 +63,18 @@ const navGroups = [
   },
 ]
 
-type ChatToast = { id: number; autor: string; texto: string; isDM: boolean }
+type Notif = { id: number; autor: string; texto: string; isDM: boolean; lida: boolean; at: Date }
 
 export function AppSidebar() {
   const pathname = usePathname()
   const { user, role, signOut } = useAuth()
   const supabase = createClient()
 
-  const [unreadChat, setUnreadChat] = useState(false)
-  const [toasts, setToasts]         = useState<ChatToast[]>([])
-  const toastIdRef                  = useRef(0)
+  const [notifs, setNotifs]   = useState<Notif[]>([])
+  const [bellOpen, setBellOpen] = useState(false)
+  const notifIdRef             = useRef(0)
+
+  const unreadCount = notifs.filter(n => !n.lida).length
 
   const initials = (user?.user_metadata?.full_name as string | undefined)
     ?.split(' ')
@@ -85,9 +88,9 @@ export function AppSidebar() {
     fetch('/api/team/activate', { method: 'POST' }).catch(() => {})
   }, [])
 
-  // Limpa badge ao entrar no chat
+  // Marca como lidas ao entrar no chat
   useEffect(() => {
-    if (pathname.startsWith('/chat')) setUnreadChat(false)
+    if (pathname.startsWith('/chat')) setNotifs(prev => prev.map(n => ({ ...n, lida: true })))
   }, [pathname])
 
   // Subscriptions de notificação de chat
@@ -98,12 +101,10 @@ export function AppSidebar() {
     let dmIds: string[]      = []
     const subs: ReturnType<typeof supabase.channel>[] = []
 
-    function showToast(autor: string, texto: string, isDM: boolean) {
+    function addNotif(autor: string, texto: string, isDM: boolean) {
       if (pathname.startsWith('/chat')) return
-      setUnreadChat(true)
-      const id = ++toastIdRef.current
-      setToasts(prev => [...prev.slice(-3), { id, autor, texto, isDM }])
-      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000)
+      const id = ++notifIdRef.current
+      setNotifs(prev => [{ id, autor, texto, isDM, lida: false, at: new Date() }, ...prev.slice(0, 19)])
     }
 
     async function setup() {
@@ -133,7 +134,7 @@ export function AppSidebar() {
             (payload) => {
               const msg = payload.new as { autor_id: string; autor_nome: string; conteudo: string }
               if (msg.autor_id === user!.id) return
-              showToast(msg.autor_nome, msg.conteudo, false)
+              addNotif(msg.autor_nome, msg.conteudo, false)
             }
           )
         })
@@ -151,7 +152,7 @@ export function AppSidebar() {
             (payload) => {
               const msg = payload.new as { autor_id: string; autor_nome: string; conteudo: string }
               if (msg.autor_id === user!.id) return
-              showToast(msg.autor_nome, msg.conteudo, true)
+              addNotif(msg.autor_nome, msg.conteudo, true)
             }
           )
         })
@@ -166,8 +167,19 @@ export function AppSidebar() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
-  function dismissToast(id: number) {
-    setToasts(prev => prev.filter(t => t.id !== id))
+  function dismissNotif(id: number) {
+    setNotifs(prev => prev.filter(n => n.id !== id))
+  }
+
+  function markAllRead() {
+    setNotifs(prev => prev.map(n => ({ ...n, lida: true })))
+  }
+
+  function formatTime(date: Date) {
+    const diff = Math.floor((Date.now() - date.getTime()) / 1000)
+    if (diff < 60)  return 'agora'
+    if (diff < 3600) return `${Math.floor(diff / 60)}min`
+    return `${Math.floor(diff / 3600)}h`
   }
 
   return (
@@ -215,7 +227,7 @@ export function AppSidebar() {
                         className={active ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-foreground transition-colors'}
                       />
                       <span className="flex-1 truncate">{label}</span>
-                      {isChat && unreadChat && !active && (
+                      {isChat && unreadCount > 0 && !active && (
                         <span className="w-2 h-2 rounded-full bg-primary shrink-0 animate-pulse" />
                       )}
                       {badge && (
@@ -273,11 +285,88 @@ export function AppSidebar() {
 
         {/* Bottom actions */}
         <div className="px-3 pb-3 space-y-0.5 border-t border-sidebar-border pt-3">
-          <button className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-all group">
-            <Bell size={16} className="text-muted-foreground group-hover:text-sidebar-foreground transition-colors" />
-            <span className="flex-1 text-left">Notificações</span>
-            <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
-          </button>
+          {/* Bell / Notificações */}
+          <DropdownMenu open={bellOpen} onOpenChange={setBellOpen}>
+            <DropdownMenuTrigger className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-all group bg-transparent border-0 cursor-pointer">
+              <div className="relative shrink-0">
+                <Bell size={16} className="text-muted-foreground group-hover:text-sidebar-foreground transition-colors" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-3.5 rounded-full bg-primary text-[8px] font-bold text-primary-foreground flex items-center justify-center px-0.5 leading-none">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </div>
+              <span className="flex-1 text-left">Notificações</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="end" sideOffset={8} className="w-80 p-0 overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <span className="text-sm font-semibold text-foreground">Notificações</span>
+                {unreadCount > 0 && (
+                  <button
+                    onClick={markAllRead}
+                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <CheckCheck size={12} />
+                    Marcar tudo como lido
+                  </button>
+                )}
+              </div>
+
+              {/* List */}
+              <div className="max-h-80 overflow-y-auto">
+                {notifs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <Bell size={24} className="text-muted-foreground/30 mb-2" />
+                    <p className="text-xs text-muted-foreground">Sem notificações</p>
+                  </div>
+                ) : (
+                  notifs.map(n => (
+                    <div
+                      key={n.id}
+                      className={`flex items-start gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-muted/40 transition-colors ${!n.lida ? 'bg-primary/5' : ''}`}
+                    >
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${!n.lida ? 'bg-primary/15' : 'bg-muted'}`}>
+                        <MessageSquareDot size={13} className={!n.lida ? 'text-primary' : 'text-muted-foreground'} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className={`text-xs font-semibold truncate ${!n.lida ? 'text-foreground' : 'text-foreground/70'}`}>
+                            {n.autor}
+                          </p>
+                          <span className="text-[10px] text-muted-foreground shrink-0">{formatTime(n.at)}</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                          {n.isDM ? 'Mensagem privada' : 'Chat Interno'} · {n.texto}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => dismissNotif(n.id)}
+                        className="text-muted-foreground/50 hover:text-muted-foreground transition-colors shrink-0 mt-0.5"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Footer */}
+              {notifs.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <div className="px-4 py-2">
+                    <button
+                      onClick={() => { setNotifs([]); setBellOpen(false) }}
+                      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors w-full text-center"
+                    >
+                      Limpar tudo
+                    </button>
+                  </div>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Link
             href="/configuracoes"
@@ -337,34 +426,6 @@ export function AppSidebar() {
           </DropdownMenu>
         </div>
       </aside>
-
-      {/* Chat toasts */}
-      {toasts.length > 0 && (
-        <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 items-end pointer-events-none">
-          {toasts.map(t => (
-            <div
-              key={t.id}
-              className="pointer-events-auto flex items-start gap-3 bg-card border border-border rounded-xl shadow-2xl px-4 py-3 w-72 animate-in slide-in-from-bottom-2 fade-in duration-200"
-            >
-              <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center shrink-0 mt-0.5">
-                <MessageSquareDot size={15} className="text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-foreground truncate">{t.autor}</p>
-                <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                  {t.isDM ? 'Mensagem privada' : 'Chat Interno'} · {t.texto}
-                </p>
-              </div>
-              <button
-                onClick={() => dismissToast(t.id)}
-                className="text-muted-foreground hover:text-foreground transition-colors shrink-0 mt-0.5"
-              >
-                <X size={13} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </>
   )
 }
