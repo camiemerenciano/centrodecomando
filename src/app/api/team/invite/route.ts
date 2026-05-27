@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient()
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/login`,
+    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
   })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })

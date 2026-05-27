@@ -67,6 +67,11 @@ export function AppSidebar() {
   const pathname = usePathname()
   const { user, role, signOut } = useAuth()
 
+  // Ativa vínculo de equipe se o usuário chegou via convite (link mágico)
+  useEffect(() => {
+    fetch('/api/team/activate', { method: 'POST' }).catch(() => {})
+  }, [])
+
   const initials = (user?.user_metadata?.full_name as string | undefined)
     ?.split(' ')
     .slice(0, 2)
