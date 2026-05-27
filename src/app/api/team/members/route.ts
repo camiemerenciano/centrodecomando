@@ -45,3 +45,27 @@ export async function GET() {
 
   return NextResponse.json(members.filter(Boolean))
 }
+
+export async function POST(req: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { nome, email, senha } = await req.json()
+  if (!nome || !email || !senha) return NextResponse.json({ error: 'Nome, e-mail e senha são obrigatórios' }, { status: 400 })
+
+  const admin = createAdminClient()
+
+  const { data: created, error } = await admin.auth.admin.createUser({
+    email,
+    password: senha,
+    email_confirm: true,
+    user_metadata: { full_name: nome },
+  })
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+  await admin.from('team_members').insert({ owner_id: user.id, member_id: created.user.id })
+
+  return NextResponse.json({ id: created.user.id })
+}

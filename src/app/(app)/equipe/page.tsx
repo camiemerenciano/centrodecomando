@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import {
   Plus, Mail, Crown, X, Send, Loader2, Trash2,
   Pencil, Check, MapPin, Briefcase, Banknote, CalendarDays, Cake, Copy,
+  Link2, UserPlus, ChevronDown, Eye, EyeOff,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 
@@ -135,6 +136,92 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
               </div>
             </div>
           )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── Add Manual Modal ──────────────────────────────────────────────────────────
+
+function AddManualModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [form, setForm]       = useState({ nome: '', email: '', senha: '' })
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState('')
+  const [showPass, setShowPass] = useState(false)
+
+  function field(k: keyof typeof form, v: string) { setForm(f => ({ ...f, [k]: v })) }
+
+  async function save() {
+    if (!form.nome || !form.email || !form.senha) { setError('Preencha todos os campos.'); return }
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/team/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Erro ao criar membro')
+      onAdded()
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao criar membro')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inp = 'w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all'
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Adicionar membro</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Cria a conta e já vincula à sua equipe</p>
+            </div>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+          <div className="px-5 py-5 space-y-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Nome completo</label>
+              <input value={form.nome} onChange={e => field('nome', e.target.value)} placeholder="Ana Silva" className={inp} autoFocus />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">E-mail</label>
+              <input type="email" value={form.email} onChange={e => field('email', e.target.value)} placeholder="ana@empresa.com" className={inp} />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Senha</label>
+              <div className="relative">
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  value={form.senha}
+                  onChange={e => field('senha', e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && save()}
+                  placeholder="Mínimo 8 caracteres"
+                  className={inp + ' pr-10'}
+                />
+                <button type="button" onClick={() => setShowPass(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </div>
+            {error && <p className="text-xs text-red-400 bg-red-500/8 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
+          </div>
+          <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+            <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
+            <Button size="sm" onClick={save} disabled={saving} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
+              {saving ? <><Loader2 size={12} className="animate-spin" /> Criando…</> : <><UserPlus size={12} /> Adicionar</>}
+            </Button>
+          </div>
         </div>
       </div>
     </>
@@ -309,6 +396,8 @@ export default function EquipePage() {
   const [members, setMembers]       = useState<Member[]>([])
   const [loading, setLoading]       = useState(true)
   const [showInvite, setShowInvite] = useState(false)
+  const [showManual, setShowManual] = useState(false)
+  const [showMenu, setShowMenu]     = useState(false)
   const [selected, setSelected]     = useState<Member | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
@@ -426,18 +515,59 @@ export default function EquipePage() {
         <p className="text-xs text-muted-foreground mt-4">Nenhum membro ainda. Convide alguém abaixo.</p>
       )}
 
-      {/* Invite button */}
-      <div className="mt-14">
-        <Button
-          size="sm"
-          onClick={() => setShowInvite(true)}
-          className="h-9 bg-primary hover:bg-primary/90 text-xs gap-2 px-4"
-        >
-          <Plus size={14} /> Convidar membro
-        </Button>
+      {/* Add buttons */}
+      <div className="mt-14 relative">
+        <div className="flex items-center gap-0 rounded-lg overflow-hidden border border-primary/40">
+          <Button
+            size="sm"
+            onClick={() => { setShowManual(true); setShowMenu(false) }}
+            className="h-9 bg-primary hover:bg-primary/90 text-xs gap-2 px-4 rounded-none border-0"
+          >
+            <UserPlus size={14} /> Adicionar membro
+          </Button>
+          <div className="w-px h-9 bg-primary/40" />
+          <button
+            onClick={() => setShowMenu(v => !v)}
+            className="h-9 px-2.5 bg-primary hover:bg-primary/90 text-white transition-colors flex items-center"
+          >
+            <ChevronDown size={14} />
+          </button>
+        </div>
+
+        {showMenu && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
+            <div className="absolute top-full mt-1 left-0 z-20 bg-card border border-border rounded-xl shadow-xl overflow-hidden w-52 animate-in fade-in zoom-in-95 duration-150">
+              <button
+                onClick={() => { setShowManual(true); setShowMenu(false) }}
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-xs text-foreground hover:bg-muted transition-colors text-left"
+              >
+                <UserPlus size={14} className="text-primary shrink-0" />
+                <div>
+                  <p className="font-medium">Adicionar manualmente</p>
+                  <p className="text-muted-foreground">Cria conta com e-mail e senha</p>
+                </div>
+              </button>
+              <div className="border-t border-border" />
+              <button
+                onClick={() => { setShowInvite(true); setShowMenu(false) }}
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-xs text-foreground hover:bg-muted transition-colors text-left"
+              >
+                <Link2 size={14} className="text-primary shrink-0" />
+                <div>
+                  <p className="font-medium">Enviar convite</p>
+                  <p className="text-muted-foreground">Gera link de acesso por e-mail</p>
+                </div>
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Modals */}
+      {showManual && (
+        <AddManualModal onClose={() => setShowManual(false)} onAdded={fetchMembers} />
+      )}
       {showInvite && (
         <InviteModal onClose={() => setShowInvite(false)} onInvited={fetchMembers} />
       )}
