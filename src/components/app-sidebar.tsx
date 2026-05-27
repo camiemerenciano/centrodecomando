@@ -22,7 +22,6 @@ import {
   Building2,
   FolderOpen,
   ShieldCheck,
-  Users,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
