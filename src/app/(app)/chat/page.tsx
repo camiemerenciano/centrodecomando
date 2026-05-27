@@ -155,34 +155,34 @@ export default function ChatPage() {
   // shared
   const [texto, setTexto]           = useState('')
   const [enviando, setEnviando]     = useState(false)
+  const [workspaceOwnerId, setWorkspaceOwnerId] = useState<string | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLInputElement>(null)
 
-  // ── load canais ──────────────────────────────────────────────────────────────
+  // ── load workspace (owner + membros) ─────────────────────────────────────────
 
   useEffect(() => {
     if (!user) return
+    fetch('/api/team/workspace').then(r => r.json()).then(data => {
+      const ownerId = data.ownerId ?? user.id
+      setWorkspaceOwnerId(ownerId)
+      if (Array.isArray(data.members)) setMembros(data.members)
 
-    supabase.from('chat_canais').select('*').eq('user_id', user.id).order('criado_em')
-      .then(async ({ data }) => {
-        if (data && data.length > 0) {
-          setCanais(data); setAtivo(data[0]); return
-        }
-        // primeira vez — cria canais padrão
-        const inserts = CANAIS_PADRAO.map(nome => ({ nome, user_id: user.id, criado_por: user.id }))
-        const { data: criados } = await supabase.from('chat_canais').insert(inserts).select()
-        if (criados?.length) { setCanais(criados); setAtivo(criados[0]) }
-      })
-  }, [user])
-
-  // ── load membros ─────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    fetch('/api/team/members').then(r => r.json()).then(data => {
-      if (Array.isArray(data)) setMembros(data)
+      // Carrega canais do workspace
+      supabase.from('chat_canais').select('*').eq('user_id', ownerId).order('criado_em')
+        .then(async ({ data: canaisData }) => {
+          if (canaisData && canaisData.length > 0) {
+            setCanais(canaisData); setAtivo(canaisData[0]); return
+          }
+          // primeira vez — só o owner cria os canais padrão
+          if (ownerId !== user.id) return
+          const inserts = CANAIS_PADRAO.map(nome => ({ nome, user_id: ownerId, criado_por: ownerId }))
+          const { data: criados } = await supabase.from('chat_canais').insert(inserts).select()
+          if (criados?.length) { setCanais(criados); setAtivo(criados[0]) }
+        })
     })
-  }, [])
+  }, [user])
 
   // ── load DMs existentes ──────────────────────────────────────────────────────
 
@@ -317,9 +317,10 @@ export default function ChatPage() {
     setErrCanal('')
     setCriandoCanal(true)
     const nome = nomeCanal.trim().toLowerCase().replace(/\s+/g, '-')
+    const ownerId = workspaceOwnerId ?? user.id
     const { data, error } = await supabase
       .from('chat_canais')
-      .insert({ nome, user_id: user.id })
+      .insert({ nome, user_id: ownerId })
       .select().single()
     setCriandoCanal(false)
     if (error) {
