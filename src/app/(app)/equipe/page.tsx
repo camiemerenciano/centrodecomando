@@ -1,19 +1,42 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { Plus, Mail, Crown, X, Send, Loader2, Trash2 } from 'lucide-react'
+import {
+  Plus, Mail, Crown, X, Send, Loader2, Trash2,
+  Pencil, Check, MapPin, Briefcase, Banknote, CalendarDays, Cake,
+} from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 
 interface Member {
   id: string
-  name: string
+  nome: string
   email: string
+  cargo: string | null
+  endereco: string | null
+  remuneracao: number | null
+  data_entrada: string | null
+  aniversario: string | null
 }
 
 function initials(name: string) {
   return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+}
+
+function fmtDate(iso: string | null) {
+  if (!iso) return '—'
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date(iso + 'T00:00:00'))
+}
+
+function fmtBirthday(iso: string | null) {
+  if (!iso) return '—'
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long' }).format(new Date(iso + 'T00:00:00'))
+}
+
+function fmtCurrency(v: number | null) {
+  if (v == null) return '—'
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 }
 
 // ── Invite Modal ───────────────────────────────────────────────────────────────
@@ -60,7 +83,6 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
               <X size={16} />
             </button>
           </div>
-
           {sent ? (
             <div className="px-5 py-10 flex flex-col items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-emerald-500/15 flex items-center justify-center">
@@ -85,9 +107,7 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
                   autoFocus
                 />
               </div>
-              {error && (
-                <p className="text-xs text-red-400 bg-red-500/8 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>
-              )}
+              {error && <p className="text-xs text-red-400 bg-red-500/8 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
               <div className="flex items-center justify-between pt-1">
                 <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
                 <Button size="sm" onClick={send} disabled={!email.trim() || sending} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
@@ -102,66 +122,163 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
   )
 }
 
-// ── Member popover ─────────────────────────────────────────────────────────────
+// ── Member Modal ───────────────────────────────────────────────────────────────
 
-function MemberPopover({ member, onClose, onDelete, deleting }: {
+function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
   member: Member
   onClose: () => void
   onDelete: (m: Member) => void
+  onSave: (id: string, fields: Partial<Member>) => Promise<void>
   deleting: boolean
 }) {
-  const ref = useRef<HTMLDivElement>(null)
+  const [editing, setEditing]   = useState(false)
+  const [saving, setSaving]     = useState(false)
+  const [form, setForm]         = useState({
+    cargo:        member.cargo        ?? '',
+    endereco:     member.endereco     ?? '',
+    remuneracao:  member.remuneracao != null ? String(member.remuneracao) : '',
+    data_entrada: member.data_entrada ?? '',
+    aniversario:  member.aniversario  ?? '',
+  })
 
-  useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [onClose])
+  function field(k: keyof typeof form, v: string) {
+    setForm(f => ({ ...f, [k]: v }))
+  }
+
+  async function save() {
+    setSaving(true)
+    await onSave(member.id, {
+      cargo:        form.cargo        || null,
+      endereco:     form.endereco     || null,
+      remuneracao:  form.remuneracao ? Number(form.remuneracao) : null,
+      data_entrada: form.data_entrada || null,
+      aniversario:  form.aniversario  || null,
+    })
+    setSaving(false)
+    setEditing(false)
+  }
+
+  const inp = 'w-full h-8 rounded-lg bg-muted border border-border px-3 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all'
 
   return (
-    <div
-      ref={ref}
-      className="absolute top-[calc(100%+10px)] left-1/2 -translate-x-1/2 z-30 bg-card border border-border rounded-2xl shadow-2xl w-56 animate-in fade-in zoom-in-95 duration-150"
-    >
-      {/* Arrow */}
-      <div className="absolute -top-[7px] left-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-card border-l border-t border-border rotate-45" />
+    <>
+      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in-95 duration-150">
 
-      <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Membro</p>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
-          <X size={13} />
-        </button>
-      </div>
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+            <p className="text-sm font-semibold text-foreground">Ficha do membro</p>
+            <div className="flex items-center gap-2">
+              {!editing ? (
+                <button
+                  onClick={() => setEditing(true)}
+                  className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                >
+                  <Pencil size={12} /> Editar
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setEditing(false); setForm({ cargo: member.cargo ?? '', endereco: member.endereco ?? '', remuneracao: member.remuneracao != null ? String(member.remuneracao) : '', data_entrada: member.data_entrada ?? '', aniversario: member.aniversario ?? '' }) }}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Cancelar
+                </button>
+              )}
+              <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors ml-1">
+                <X size={16} />
+              </button>
+            </div>
+          </div>
 
-      <div className="flex flex-col items-center gap-2.5 px-4 pb-4">
-        <Avatar className="w-14 h-14">
-          <AvatarFallback className="bg-primary/20 text-primary font-bold text-base">
-            {initials(member.name)}
-          </AvatarFallback>
-        </Avatar>
-        <div className="text-center w-full">
-          <p className="text-sm font-semibold text-foreground truncate">{member.name}</p>
-          <div className="flex items-center gap-1 justify-center mt-1">
-            <Mail size={10} className="text-muted-foreground shrink-0" />
-            <p className="text-[11px] text-muted-foreground truncate">{member.email}</p>
+          {/* Avatar + name */}
+          <div className="flex flex-col items-center gap-2 pt-5 pb-4 px-5">
+            <Avatar className="w-16 h-16">
+              <AvatarFallback className="bg-primary/20 text-primary font-bold text-lg">
+                {initials(member.nome)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="text-center">
+              <p className="text-sm font-semibold text-foreground">{member.nome}</p>
+              <div className="flex items-center gap-1 justify-center mt-0.5">
+                <Mail size={10} className="text-muted-foreground" />
+                <p className="text-[11px] text-muted-foreground">{member.email}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Fields */}
+          <div className="px-5 pb-4 space-y-3">
+            {editing ? (
+              <>
+                <Field icon={<Briefcase size={13} />} label="Cargo">
+                  <input value={form.cargo} onChange={e => field('cargo', e.target.value)} placeholder="Ex: Designer" className={inp} />
+                </Field>
+                <Field icon={<MapPin size={13} />} label="Endereço">
+                  <input value={form.endereco} onChange={e => field('endereco', e.target.value)} placeholder="Ex: São Paulo, SP" className={inp} />
+                </Field>
+                <Field icon={<Banknote size={13} />} label="Remuneração (R$)">
+                  <input value={form.remuneracao} onChange={e => field('remuneracao', e.target.value)} type="number" placeholder="5000" className={inp} />
+                </Field>
+                <Field icon={<CalendarDays size={13} />} label="Entrada na empresa">
+                  <input value={form.data_entrada} onChange={e => field('data_entrada', e.target.value)} type="date" className={inp} />
+                </Field>
+                <Field icon={<Cake size={13} />} label="Aniversário">
+                  <input value={form.aniversario} onChange={e => field('aniversario', e.target.value)} type="date" className={inp} />
+                </Field>
+              </>
+            ) : (
+              <>
+                <InfoRow icon={<Briefcase size={13} />} label="Cargo"           value={member.cargo ?? '—'} />
+                <InfoRow icon={<MapPin size={13} />}    label="Endereço"        value={member.endereco ?? '—'} />
+                <InfoRow icon={<Banknote size={13} />}  label="Remuneração"     value={fmtCurrency(member.remuneracao)} />
+                <InfoRow icon={<CalendarDays size={13} />} label="Na empresa desde" value={fmtDate(member.data_entrada)} />
+                <InfoRow icon={<Cake size={13} />}      label="Aniversário"     value={fmtBirthday(member.aniversario)} />
+              </>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+            <button
+              onClick={() => onDelete(member)}
+              disabled={deleting}
+              className="flex items-center gap-1.5 text-xs text-red-400 hover:bg-red-500/10 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+            >
+              {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              Remover
+            </button>
+            {editing && (
+              <Button size="sm" onClick={save} disabled={saving} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
+                {saving ? <><Loader2 size={12} className="animate-spin" /> Salvando…</> : <><Check size={12} /> Salvar</>}
+              </Button>
+            )}
           </div>
         </div>
       </div>
+    </>
+  )
+}
 
-      <div className="border-t border-border px-4 py-3">
-        <button
-          onClick={() => onDelete(member)}
-          disabled={deleting}
-          className="w-full flex items-center justify-center gap-1.5 text-xs text-red-400 hover:bg-red-500/10 rounded-lg py-2 transition-colors disabled:opacity-50"
-        >
-          {deleting
-            ? <><Loader2 size={12} className="animate-spin" /> Removendo…</>
-            : <><Trash2 size={12} /> Remover da equipe</>
-          }
-        </button>
+function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>
+      <div className="min-w-0">
+        <p className="text-[10px] text-muted-foreground leading-none">{label}</p>
+        <p className="text-xs text-foreground mt-0.5 truncate">{value}</p>
       </div>
+    </div>
+  )
+}
+
+function Field({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-1">
+        <span>{icon}</span>{label}
+      </label>
+      {children}
     </div>
   )
 }
@@ -173,7 +290,7 @@ export default function EquipePage() {
   const [members, setMembers]       = useState<Member[]>([])
   const [loading, setLoading]       = useState(true)
   const [showInvite, setShowInvite] = useState(false)
-  const [selected, setSelected]     = useState<string | null>(null)
+  const [selected, setSelected]     = useState<Member | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const ownerName  = (user?.user_metadata?.full_name as string | undefined) ?? user?.email?.split('@')[0] ?? 'Você'
@@ -183,8 +300,7 @@ export default function EquipePage() {
     try {
       const res = await fetch('/api/team/members')
       if (!res.ok) return
-      const data = await res.json() as { id: string; nome: string; email: string }[]
-      setMembers(data.map(m => ({ id: m.id, name: m.nome, email: m.email })))
+      setMembers(await res.json())
     } finally {
       setLoading(false)
     }
@@ -203,12 +319,22 @@ export default function EquipePage() {
     }
   }
 
+  async function saveMember(id: string, fields: Partial<Member>) {
+    await fetch(`/api/team/members/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    })
+    setMembers(prev => prev.map(m => m.id === id ? { ...m, ...fields } : m))
+    setSelected(prev => prev?.id === id ? { ...prev, ...fields } : prev)
+  }
+
   useEffect(() => { fetchMembers() }, [])
 
   return (
     <div className="flex flex-col items-center pt-10 pb-20 select-none">
 
-      {/* ── Owner node ── */}
+      {/* Owner node */}
       <div className="flex flex-col items-center gap-2.5 px-6 py-5 rounded-2xl bg-amber-500/10 border border-amber-500/25 shadow-sm">
         <div className="relative">
           <Avatar className="w-16 h-16">
@@ -227,28 +353,24 @@ export default function EquipePage() {
         </div>
       </div>
 
-      {/* ── Vertical stem owner → members ── */}
+      {/* Vertical stem */}
       {(loading || members.length > 0) && (
         <div className="w-px h-10 bg-border" />
       )}
 
-      {/* ── Loading ── */}
-      {loading && (
-        <Loader2 size={18} className="animate-spin text-muted-foreground mt-2" />
-      )}
+      {loading && <Loader2 size={18} className="animate-spin text-muted-foreground mt-2" />}
 
-      {/* ── Members row ── */}
+      {/* Members row */}
       {!loading && members.length > 0 && (
         <div className="relative flex">
           {members.map((m, i) => {
             const isOnly  = members.length === 1
             const isFirst = i === 0
             const isLast  = i === members.length - 1
-            const isSel   = selected === m.id
 
             return (
               <div key={m.id} className="relative flex flex-col items-center px-5">
-                {/* Horizontal connector bar */}
+                {/* Horizontal connector */}
                 {!isOnly && (
                   <div className={`absolute top-0 h-px bg-border ${
                     isFirst ? 'left-1/2 right-0' :
@@ -257,50 +379,35 @@ export default function EquipePage() {
                   }`} />
                 )}
 
-                {/* Vertical stem to node */}
+                {/* Vertical stem */}
                 <div className="w-px h-10 bg-border" />
 
                 {/* Member node */}
                 <button
-                  onClick={() => setSelected(isSel ? null : m.id)}
-                  className={`flex flex-col items-center gap-2 px-4 py-3 rounded-2xl border transition-all duration-150 ${
-                    isSel
-                      ? 'bg-primary/10 border-primary/40 shadow-md shadow-primary/10'
-                      : 'bg-card border-border hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm'
-                  }`}
+                  onClick={() => setSelected(m)}
+                  className="flex flex-col items-center gap-2 px-4 py-3 rounded-2xl border border-border bg-card hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm transition-all duration-150"
                 >
                   <Avatar className="w-12 h-12">
                     <AvatarFallback className="bg-primary/20 text-primary font-semibold text-sm">
-                      {initials(m.name)}
+                      {initials(m.nome)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="text-center">
-                    <p className="text-xs font-semibold text-foreground leading-none">{m.name.split(' ')[0]}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Membro</p>
+                    <p className="text-xs font-semibold text-foreground leading-none">{m.nome.split(' ')[0]}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{m.cargo ?? 'Membro'}</p>
                   </div>
                 </button>
-
-                {/* Detail popover */}
-                {isSel && (
-                  <MemberPopover
-                    member={m}
-                    onClose={() => setSelected(null)}
-                    onDelete={deleteMember}
-                    deleting={deletingId === m.id}
-                  />
-                )}
               </div>
             )
           })}
         </div>
       )}
 
-      {/* ── Empty state ── */}
       {!loading && members.length === 0 && (
         <p className="text-xs text-muted-foreground mt-4">Nenhum membro ainda. Convide alguém abaixo.</p>
       )}
 
-      {/* ── Invite button ── */}
+      {/* Invite button */}
       <div className="mt-14">
         <Button
           size="sm"
@@ -311,8 +418,18 @@ export default function EquipePage() {
         </Button>
       </div>
 
+      {/* Modals */}
       {showInvite && (
         <InviteModal onClose={() => setShowInvite(false)} onInvited={fetchMembers} />
+      )}
+      {selected && (
+        <MemberModal
+          member={selected}
+          onClose={() => setSelected(null)}
+          onDelete={deleteMember}
+          onSave={saveMember}
+          deleting={deletingId === selected.id}
+        />
       )}
     </div>
   )
