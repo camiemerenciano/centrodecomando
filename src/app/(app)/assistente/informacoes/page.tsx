@@ -218,6 +218,7 @@ export default function InformacoesPage() {
   const [emojisPermitidos,  setEmojisPermitidos]  = useState<string[]>(DEFAULTS.emojis_permitidos)
   const [emojisProibidos,   setEmojisProibidos]   = useState<string[]>(DEFAULTS.emojis_proibidos)
   const [exemplos,          setExemplos]          = useState<string[]>(DEFAULTS.exemplos)
+  const [delaySegundos,     setDelaySegundos]     = useState(10)
 
   // Load from Supabase
   useEffect(() => {
@@ -241,6 +242,7 @@ export default function InformacoesPage() {
         setEmojisProibidos(data.emojis_proibidos ?? [])
         setExemplos(data.exemplos ?? [])
         setConhecimento(data.conhecimento ?? '')
+        setDelaySegundos(data.delay_segundos ?? 10)
       } else {
         // Primeira vez — busca template da conta fabrica
         const tmplRes = await fetch('/api/config/template')
@@ -300,6 +302,7 @@ export default function InformacoesPage() {
       emojis_proibidos:  emojisProibidos,
       exemplos,
       conhecimento,
+      delay_segundos:    delaySegundos,
       updated_at:        new Date().toISOString(),
     }, { onConflict: 'user_id' })
 
@@ -458,6 +461,35 @@ export default function InformacoesPage() {
           onChange={setExemplos}
           placeholder="Ex: entendi, faz sentido pro momento de vocês…"
         />
+      </Section>
+
+      {/* Tempo de resposta */}
+      <Section title="Tempo de resposta" description="Quantos segundos a IA aguarda antes de responder, simulando digitação humana.">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Delay atual</span>
+            <span className="text-sm font-semibold text-foreground tabular-nums">{delaySegundos}s</span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={60}
+            step={1}
+            value={delaySegundos}
+            onChange={e => setDelaySegundos(Number(e.target.value))}
+            className="w-full h-2 rounded-full appearance-none bg-muted cursor-pointer accent-primary"
+          />
+          <div className="flex justify-between text-[10px] text-muted-foreground">
+            <span>1s</span>
+            <span>15s</span>
+            <span>30s</span>
+            <span>45s</span>
+            <span>60s</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground bg-muted/40 rounded-lg px-3 py-2.5 border border-border">
+            Recomendado entre <strong className="text-foreground">8–20 segundos</strong> para soar natural. Valores muito baixos podem parecer bot; muito altos podem frustrar o cliente.
+          </p>
+        </div>
       </Section>
 
     </div>

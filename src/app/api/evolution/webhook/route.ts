@@ -12,6 +12,7 @@ interface AiConfig {
   tom_de_voz: string[]; regras: string[]; proibicoes: string[]
   emojis_permitidos: string[]; emojis_proibidos: string[]; exemplos: string[]
   conhecimento?: string | null
+  delay_segundos?: number | null
 }
 
 function buildSystemPrompt(c: AiConfig, areas: string[], hasCalendar = false): string {
@@ -384,8 +385,9 @@ export async function POST(request: NextRequest) {
       const reply = response.choices[0]?.message?.content?.trim()
       if (!reply) return
 
-      // Simulate human typing delay (keep short to avoid Vercel function timeout)
-      await new Promise(resolve => setTimeout(resolve, 4_000))
+      // Human typing delay — uses value from ai_config, default 10s
+      const delayMs = Math.min(60, Math.max(1, aiConfig?.delay_segundos ?? 10)) * 1000
+      await new Promise(resolve => setTimeout(resolve, delayMs))
 
       await fetch(`${base}/message/sendText/${instanceName}`, {
         method: 'POST',
