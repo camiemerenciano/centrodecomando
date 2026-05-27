@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const ADMIN_PATHS = ['/agencias', '/membros']
+
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
@@ -25,9 +27,7 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
   const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/register')
@@ -49,6 +49,31 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
+  }
+
+  // Proteção de rotas admin — exige role 'superadmin'
+  const isAdminPath = ADMIN_PATHS.some(
+    p => pathname === p || pathname.startsWith(p + '/')
+  )
+
+  if (isAdminPath) {
+    if (!user) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
+
+    const { data: perfil } = await supabase
+      .from('perfis')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (perfil?.role !== 'superadmin') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse
