@@ -43,13 +43,14 @@ const navGroups = [
       { href: '/dashboard',                   label: 'Dashboard',        icon: LayoutDashboard },
       { href: '/assistente/areas-de-atuacao', label: 'Áreas de Atuação', icon: Layers },
       { href: '/assistente/conexoes',          label: 'Conexões',         icon: Plug },
+      { href: '/pipeline',                     label: 'Pipeline',         icon: FolderKanban },
+      { href: '/clientes',                     label: 'Clientes',         icon: Users },
     ],
   },
   {
     label: 'Comunicação',
     items: [
-      { href: '/pipeline',  label: 'Pipeline',  icon: FolderKanban },
-      { href: '/clientes',  label: 'Clientes',  icon: Users },
+      { href: '/chat', label: 'Chat Interno', icon: MessagesSquare },
     ],
   },
   {
@@ -59,7 +60,6 @@ const navGroups = [
       { href: '/tarefas',    label: 'Tarefas',    icon: CheckSquare },
       { href: '/calendario', label: 'Calendário', icon: Calendar },
       { href: '/equipe',     label: 'Equipe',     icon: UsersRound },
-      { href: '/chat',       label: 'Chat Interno', icon: MessagesSquare },
     ],
   },
 ]
