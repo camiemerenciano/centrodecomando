@@ -228,35 +228,8 @@ export async function POST(request: NextRequest) {
 
       if (!process.env.OPENAI_API_KEY) return
 
-      const PIPELINE_STAGES = `
-- recepcao: primeiro contato, cliente ainda não qualificado
-- viabilidade: entendendo necessidades, analisando se há fit
-- ag_agendamento: cliente interessado, combinando horário para call
-- agendado: call/reunião agendada
-- contrato_enviado: proposta ou contrato enviado ao cliente
-- contrato_assinado: cliente fechou, contrato assinado
-- followup: cliente em acompanhamento pós-venda ou retomada
-- perdido: cliente desistiu ou não tem fit`
-
-      const allTools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
-        {
-          type: 'function',
-          function: {
-            name: 'classificar_pipeline',
-            description: `Atualiza a etapa do pipeline com base no andamento da conversa. Use SEMPRE que a conversa avançar de etapa. Etapas:${PIPELINE_STAGES}`,
-            parameters: {
-              type: 'object',
-              properties: {
-                etapa: {
-                  type: 'string',
-                  enum: ['recepcao','viabilidade','ag_agendamento','agendado','contrato_enviado','contrato_assinado','followup','perdido'],
-                  description: 'Nova etapa do pipeline',
-                },
-              },
-              required: ['etapa'],
-            },
-          },
-        },
+      // Calendar tools only — pipeline classification is automatic (see below)
+      const calendarTools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         {
           type: 'function',
           function: {
@@ -286,7 +259,7 @@ export async function POST(request: NextRequest) {
                 nome_empresa:  { type: 'string' },
                 telefone:      { type: 'string' },
                 objetivo:      { type: 'string' },
-                email_cliente: { type: 'string', description: 'E-mail do cliente para enviar o convite do Google Calendar' },
+                email_cliente: { type: 'string' },
               },
               required: ['data_inicio', 'data_fim', 'nome_cliente', 'nome_empresa', 'telefone', 'objetivo', 'email_cliente'],
             },
@@ -294,14 +267,7 @@ export async function POST(request: NextRequest) {
         },
       ]
 
-      async function runTool(name: string, args: Record<string, string>): Promise<string> {
-        if (name === 'classificar_pipeline') {
-          await admin.from('pipeline_leads')
-            .update({ stage: args.etapa })
-            .eq('user_id', user_id)
-            .eq('remote_jid', remoteJid)
-          return `pipeline atualizado para: ${args.etapa}`
-        }
+      async function runCalTool(name: string, args: Record<string, string>): Promise<string> {
         if (!gcalToken) return 'google agenda não conectado'
         if (name === 'consultar_disponibilidade') {
           const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
@@ -359,8 +325,7 @@ export async function POST(request: NextRequest) {
         temperature: 0.75,
         max_tokens: 400,
         messages: chatMessages,
-        tools: allTools,
-        tool_choice: 'auto',
+        ...(gcalToken ? { tools: calendarTools, tool_choice: 'auto' as const } : {}),
       })
 
       while (response.choices[0]?.finish_reason === 'tool_calls') {
@@ -369,7 +334,7 @@ export async function POST(request: NextRequest) {
         for (const tc of assistantMsg.tool_calls ?? []) {
           if (tc.type !== 'function') continue
           const args   = JSON.parse(tc.function.arguments) as Record<string, string>
-          const result = await runTool(tc.function.name, args)
+          const result = await runCalTool(tc.function.name, args)
           chatMessages.push({ role: 'tool', tool_call_id: tc.id, content: result })
         }
         response = await openai.chat.completions.create({
@@ -377,7 +342,7 @@ export async function POST(request: NextRequest) {
           temperature: 0.75,
           max_tokens: 400,
           messages: chatMessages,
-          tools: allTools,
+          tools: calendarTools,
           tool_choice: 'auto',
         })
       }
@@ -385,9 +350,56 @@ export async function POST(request: NextRequest) {
       const reply = response.choices[0]?.message?.content?.trim()
       if (!reply) return
 
-      // Human typing delay — uses value from ai_config, default 10s
+      // ── Auto-classify pipeline stage (runs in parallel with the typing delay) ─
+      const VALID_STAGES = ['recepcao','viabilidade','ag_agendamento','agendado','contrato_enviado','contrato_assinado','followup','perdido']
+
+      async function classifyPipeline() {
+        try {
+          const classifyRes = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            temperature: 0,
+            max_tokens: 10,
+            messages: [
+              {
+                role: 'system',
+                content: `Classifique a etapa atual do funil de vendas com base na conversa. Responda APENAS com uma palavra — a etapa exata, sem explicações.
+
+Etapas (escolha a mais avançada que o contexto justifica):
+recepcao — primeiro contato, cliente ainda não qualificado
+viabilidade — cliente demonstrou interesse, discutindo necessidades ou serviços
+ag_agendamento — combinando horário para call ou reunião
+agendado — call ou reunião confirmada
+contrato_enviado — proposta ou contrato enviado
+contrato_assinado — negócio fechado
+followup — acompanhamento pós-venda ou retomada de conversa
+perdido — cliente desistiu, recusou ou ficou sem responder`,
+              },
+              ...history.map(m => ({
+                role: (['Lunna', 'Equipe'].includes(m.from) ? 'assistant' : 'user') as 'assistant' | 'user',
+                content: m.content,
+              })),
+              { role: 'assistant', content: reply },
+            ],
+          })
+
+          const stage = classifyRes.choices[0]?.message?.content?.trim().toLowerCase()
+          if (stage && VALID_STAGES.includes(stage)) {
+            await admin.from('pipeline_leads')
+              .update({ stage })
+              .eq('user_id', user_id)
+              .eq('remote_jid', remoteJid)
+          }
+        } catch (err) {
+          console.error('[webhook] pipeline classification error:', err)
+        }
+      }
+
+      // Typing delay + classification run in parallel — classification is "free"
       const delayMs = Math.min(60, Math.max(1, aiConfig?.delay_segundos ?? 10)) * 1000
-      await new Promise(resolve => setTimeout(resolve, delayMs))
+      await Promise.all([
+        new Promise(resolve => setTimeout(resolve, delayMs)),
+        classifyPipeline(),
+      ])
 
       await fetch(`${base}/message/sendText/${instanceName}`, {
         method: 'POST',

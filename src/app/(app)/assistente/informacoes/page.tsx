@@ -487,7 +487,7 @@ export default function InformacoesPage() {
             <span>60s</span>
           </div>
           <p className="text-[11px] text-muted-foreground bg-muted/40 rounded-lg px-3 py-2.5 border border-border">
-            Recomendado entre <strong className="text-foreground">8–20 segundos</strong> para soar natural. Valores muito baixos podem parecer bot; muito altos podem frustrar o cliente.
+            Recomendado entre <strong className="text-foreground">20–30 segundos</strong> para soar natural. Valores muito baixos podem parecer bot; muito altos podem frustrar o cliente.
           </p>
         </div>
       </Section>
