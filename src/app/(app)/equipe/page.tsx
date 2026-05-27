@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
   Plus, Mail, Crown, X, Send, Loader2, Trash2,
-  Pencil, Check, MapPin, Briefcase, Banknote, CalendarDays, Cake,
+  Pencil, Check, MapPin, Briefcase, Banknote, CalendarDays, Cake, Copy,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 
@@ -42,10 +42,11 @@ function fmtCurrency(v: number | null) {
 // ── Invite Modal ───────────────────────────────────────────────────────────────
 
 function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: () => void }) {
-  const [email, setEmail]     = useState('')
-  const [sending, setSending] = useState(false)
-  const [sent, setSent]       = useState(false)
-  const [error, setError]     = useState('')
+  const [email, setEmail]         = useState('')
+  const [sending, setSending]     = useState(false)
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const [copied, setCopied]       = useState(false)
+  const [error, setError]         = useState('')
 
   async function send() {
     if (!email.trim()) return
@@ -58,15 +59,25 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
         body: JSON.stringify({ email: email.trim() }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Erro ao enviar convite')
-      setSent(true)
+      if (!res.ok) throw new Error(data.error ?? 'Erro ao gerar convite')
       onInvited()
-      setTimeout(onClose, 2000)
+      if (data.inviteLink) {
+        setInviteLink(data.inviteLink)
+      } else {
+        setTimeout(onClose, 2000)
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erro ao enviar convite')
+      setError(e instanceof Error ? e.message : 'Erro ao gerar convite')
     } finally {
       setSending(false)
     }
+  }
+
+  function copyLink() {
+    if (!inviteLink) return
+    navigator.clipboard.writeText(inviteLink)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -77,20 +88,28 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
           <div className="flex items-center justify-between px-5 py-4 border-b border-border">
             <div>
               <h2 className="text-sm font-semibold text-foreground">Convidar membro</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Um link de acesso será enviado por e-mail</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {inviteLink ? 'Copie o link e envie para o membro' : 'Um link de acesso será gerado'}
+              </p>
             </div>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
               <X size={16} />
             </button>
           </div>
-          {sent ? (
-            <div className="px-5 py-10 flex flex-col items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-emerald-500/15 flex items-center justify-center">
-                <Send size={20} className="text-emerald-400" />
+          {inviteLink ? (
+            <div className="px-5 py-6 space-y-4">
+              <div className="rounded-xl bg-emerald-500/8 border border-emerald-500/20 p-3">
+                <p className="text-xs text-emerald-400 font-medium mb-2">Convite gerado para {email}</p>
+                <p className="text-[10px] text-muted-foreground break-all leading-relaxed">{inviteLink}</p>
               </div>
-              <p className="text-sm font-medium text-foreground">Convite enviado!</p>
-              <p className="text-xs text-muted-foreground text-center">
-                E-mail enviado para <span className="text-foreground font-medium">{email}</span>
+              <button
+                onClick={copyLink}
+                className="w-full h-9 rounded-lg bg-primary hover:bg-primary/90 text-xs font-medium text-white transition-all flex items-center justify-center gap-2"
+              >
+                {copied ? <><Check size={13} /> Copiado!</> : <><Copy size={13} /> Copiar link de convite</>}
+              </button>
+              <p className="text-[11px] text-muted-foreground text-center">
+                Envie este link para o membro. Ele expira em 24 horas.
               </p>
             </div>
           ) : (
@@ -111,7 +130,7 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
               <div className="flex items-center justify-between pt-1">
                 <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
                 <Button size="sm" onClick={send} disabled={!email.trim() || sending} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
-                  {sending ? <><Loader2 size={12} className="animate-spin" /> Enviando…</> : <><Send size={12} /> Enviar convite</>}
+                  {sending ? <><Loader2 size={12} className="animate-spin" /> Gerando…</> : <><Send size={12} /> Gerar convite</>}
                 </Button>
               </div>
             </div>
