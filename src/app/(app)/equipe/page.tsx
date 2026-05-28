@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import {
   Mail, Crown, X, Loader2, Trash2, Pencil, Check,
   MapPin, Briefcase, Banknote, CalendarDays, Cake,
-  UserPlus, Eye, EyeOff, ChevronDown, UserCog,
+  UserPlus, Eye, EyeOff, ChevronDown, UserCog, Phone,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { createClient } from '@/lib/supabase/client'
@@ -15,7 +15,7 @@ import { createClient } from '@/lib/supabase/client'
 
 interface Member {
   id: string; nome: string; email: string; cargo: string | null
-  endereco: string | null; remuneracao: number | null
+  telefone: string | null; endereco: string | null; remuneracao: number | null
   data_entrada: string | null; aniversario: string | null
 }
 
@@ -352,9 +352,12 @@ function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving]   = useState(false)
   const [form, setForm]       = useState({
-    cargo: member.cargo ?? '', endereco: member.endereco ?? '',
-    remuneracao: member.remuneracao != null ? String(member.remuneracao) : '',
-    data_entrada: member.data_entrada ?? '', aniversario: member.aniversario ?? '',
+    cargo:        member.cargo        ?? '',
+    telefone:     member.telefone     ?? '',
+    endereco:     member.endereco     ?? '',
+    remuneracao:  member.remuneracao != null ? String(member.remuneracao) : '',
+    data_entrada: member.data_entrada ?? '',
+    aniversario:  member.aniversario  ?? '',
   })
 
   function field(k: keyof typeof form, v: string) { setForm(f => ({ ...f, [k]: v })) }
@@ -363,6 +366,7 @@ function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
     setSaving(true)
     await onSave(member.id, {
       cargo:        form.cargo        || null,
+      telefone:     form.telefone     || null,
       endereco:     form.endereco     || null,
       remuneracao:  form.remuneracao ? Number(form.remuneracao) : null,
       data_entrada: form.data_entrada || null,
@@ -381,7 +385,7 @@ function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
         extra={
           !editing
             ? <button onClick={() => setEditing(true)} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"><Pencil size={12} /> Editar</button>
-            : <button onClick={() => { setEditing(false); setForm({ cargo: member.cargo ?? '', endereco: member.endereco ?? '', remuneracao: member.remuneracao != null ? String(member.remuneracao) : '', data_entrada: member.data_entrada ?? '', aniversario: member.aniversario ?? '' }) }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
+            : <button onClick={() => { setEditing(false); setForm({ cargo: member.cargo ?? '', telefone: member.telefone ?? '', endereco: member.endereco ?? '', remuneracao: member.remuneracao != null ? String(member.remuneracao) : '', data_entrada: member.data_entrada ?? '', aniversario: member.aniversario ?? '' }) }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
         }
       />
 
@@ -391,10 +395,7 @@ function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
         </Avatar>
         <div className="text-center">
           <p className="text-sm font-semibold text-foreground">{member.nome}</p>
-          <div className="flex items-center gap-1 justify-center mt-0.5">
-            <Mail size={10} className="text-muted-foreground" />
-            <p className="text-[11px] text-muted-foreground">{member.email}</p>
-          </div>
+          {member.cargo && <p className="text-[11px] text-muted-foreground mt-0.5">{member.cargo}</p>}
         </div>
       </div>
 
@@ -402,18 +403,20 @@ function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
         {editing ? (
           <>
             <Field icon={<Briefcase size={13} />} label="Cargo"><input value={form.cargo} onChange={e => field('cargo', e.target.value)} placeholder="Ex: Designer" className={inp} /></Field>
+            <Field icon={<Phone size={13} />} label="Telefone"><input value={form.telefone} onChange={e => field('telefone', e.target.value)} placeholder="(11) 99999-9999" className={inp} /></Field>
             <Field icon={<MapPin size={13} />} label="Endereço"><input value={form.endereco} onChange={e => field('endereco', e.target.value)} placeholder="Ex: São Paulo, SP" className={inp} /></Field>
-            <Field icon={<Banknote size={13} />} label="Remuneração (R$)"><input value={form.remuneracao} onChange={e => field('remuneracao', e.target.value)} type="number" placeholder="5000" className={inp} /></Field>
-            <Field icon={<CalendarDays size={13} />} label="Entrada na empresa"><input value={form.data_entrada} onChange={e => field('data_entrada', e.target.value)} type="date" className={inp} /></Field>
+            <Field icon={<CalendarDays size={13} />} label="Início na empresa"><input value={form.data_entrada} onChange={e => field('data_entrada', e.target.value)} type="date" className={inp} /></Field>
             <Field icon={<Cake size={13} />} label="Aniversário"><input value={form.aniversario} onChange={e => field('aniversario', e.target.value)} type="date" className={inp} /></Field>
+            <Field icon={<Banknote size={13} />} label="Remuneração (R$)"><input value={form.remuneracao} onChange={e => field('remuneracao', e.target.value)} type="number" placeholder="5000" className={inp} /></Field>
           </>
         ) : (
           <>
-            <InfoRow icon={<Briefcase size={13} />} label="Cargo"            value={member.cargo ?? '—'} />
-            <InfoRow icon={<MapPin size={13} />}    label="Endereço"         value={member.endereco ?? '—'} />
-            <InfoRow icon={<Banknote size={13} />}  label="Remuneração"      value={fmtCurrency(member.remuneracao)} />
-            <InfoRow icon={<CalendarDays size={13} />} label="Na empresa desde" value={fmtDate(member.data_entrada)} />
-            <InfoRow icon={<Cake size={13} />}      label="Aniversário"      value={fmtBirthday(member.aniversario)} />
+            <InfoRow icon={<Phone size={13} />}        label="Telefone"         value={member.telefone ?? '—'} />
+            <InfoRow icon={<Mail size={13} />}         label="E-mail"           value={member.email} />
+            <InfoRow icon={<MapPin size={13} />}       label="Endereço"         value={member.endereco ?? '—'} />
+            <InfoRow icon={<CalendarDays size={13} />} label="Início na empresa" value={fmtDate(member.data_entrada)} />
+            <InfoRow icon={<Cake size={13} />}         label="Aniversário"      value={fmtBirthday(member.aniversario)} />
+            <InfoRow icon={<Banknote size={13} />}     label="Remuneração"      value={fmtCurrency(member.remuneracao)} />
           </>
         )}
       </div>

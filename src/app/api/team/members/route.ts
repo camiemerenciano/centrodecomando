@@ -20,7 +20,7 @@ export async function GET() {
 
   const { data: perfis } = await admin
     .from('perfis')
-    .select('id, cargo, endereco, remuneracao, data_entrada, aniversario')
+    .select('id, cargo, telefone, endereco, remuneracao, data_entrada, aniversario')
     .in('id', memberIds)
 
   const perfilMap = new Map((perfis ?? []).map(p => [p.id, p]))
@@ -35,6 +35,7 @@ export async function GET() {
         nome:         (u.user_metadata?.full_name as string | undefined) ?? u.email?.split('@')[0] ?? 'Membro',
         email:        u.email ?? '',
         cargo:        perfil?.cargo        ?? null,
+        telefone:     perfil?.telefone     ?? null,
         endereco:     perfil?.endereco     ?? null,
         remuneracao:  perfil?.remuneracao  ?? null,
         data_entrada: perfil?.data_entrada ?? null,

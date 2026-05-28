@@ -20,11 +20,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   if (!link) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { cargo, endereco, remuneracao, data_entrada, aniversario } = await req.json()
+  const { cargo, telefone, endereco, remuneracao, data_entrada, aniversario } = await req.json()
 
   const { error } = await admin.from('perfis').upsert({
     id,
     cargo:        cargo        || null,
+    telefone:     telefone     || null,
     endereco:     endereco     || null,
     remuneracao:  remuneracao  ?? null,
     data_entrada: data_entrada || null,
