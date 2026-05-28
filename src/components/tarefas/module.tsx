@@ -588,6 +588,7 @@ export function TarefasModule() {
   const [view, setView]                 = useState<'kanban' | 'list' | 'gantt'>('kanban')
   const [filterStatus, setFilterStatus] = useState<OpStatus | 'all'>('all')
   const [filterDue, setFilterDue]       = useState('all')
+  const [filterProjeto, setFilterProjeto] = useState('')
   const [showForm, setShowForm]         = useState(false)
   const [editTask, setEditTask]         = useState<Partial<OpTask> | null>(null)
   const [userId, setUserId]             = useState<string | null>(null)
@@ -628,6 +629,7 @@ export function TarefasModule() {
 
   const filtered = useMemo(() => tasks.filter(t => {
     if (filterStatus !== 'all' && t.status !== filterStatus) return false
+    if (filterProjeto && t.projetoId !== filterProjeto) return false
     if (filterDue !== 'all') {
       const today = new Date(new Date().toDateString())
       const due   = new Date(t.dueDate)
@@ -642,7 +644,7 @@ export function TarefasModule() {
       }
     }
     return true
-  }), [tasks, filterStatus, filterDue])
+  }), [tasks, filterStatus, filterDue, filterProjeto])
 
   function openCreate(status?: OpStatus) {
     setEditTask(status ? { status } : { status: 'novo' })
@@ -696,7 +698,7 @@ export function TarefasModule() {
   }
 
   const sel = 'h-8 rounded-lg bg-muted border border-border px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer transition-all'
-  const activeFilters = [filterStatus, filterDue].filter(f => f !== 'all').length
+  const activeFilters = [filterStatus !== 'all', filterDue !== 'all', !!filterProjeto].filter(Boolean).length
 
   return (
     <div className="space-y-4 max-w-[1440px]">
@@ -709,6 +711,11 @@ export function TarefasModule() {
             {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
           </select>
 
+          <select value={filterProjeto} onChange={e => setFilterProjeto(e.target.value)} className={sel}>
+            <option value="">Todos os projetos</option>
+            {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+          </select>
+
           <select value={filterDue} onChange={e => setFilterDue(e.target.value)} className={sel}>
             <option value="all">Qualquer prazo</option>
             <option value="overdue">Atrasadas</option>
@@ -718,7 +725,7 @@ export function TarefasModule() {
 
           {activeFilters > 0 && (
             <button
-              onClick={() => { setFilterStatus('all'); setFilterDue('all') }}
+              onClick={() => { setFilterStatus('all'); setFilterDue('all'); setFilterProjeto('') }}
               className="flex items-center gap-1 h-8 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted border border-border transition-all"
             >
               <X size={11} /> Limpar ({activeFilters})
