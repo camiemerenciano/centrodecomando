@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import {
-  AlertTriangle, Calendar, FolderOpen, UsersRound, BarChart3,
-  Sparkles, Loader2, RefreshCw, Clock, Wifi, WifiOff,
+  AlertTriangle, Calendar, Sparkles, Loader2, RefreshCw,
+  Clock, Wifi, WifiOff, FolderOpen, Activity,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -15,18 +15,31 @@ import { Button } from '@/components/ui/button'
 
 type TarefaAtrasada = { id: string; title: string; due_date: string; diasAtraso: number; projetoNome?: string }
 type Reuniao        = { id: string; titulo: string; inicio: string; link?: string }
-type ProjetoParado  = { id: string; nome: string; diasParado: number }
-type Membro         = { id: string; nome: string; tarefasAtivas: number }
-type Etapa          = { stage: string; label: string; count: number }
 
-const STAGE_LABELS: Record<string, string> = {
-  recepcao:          'Recepção',
-  viabilidade:       'Viabilidade',
-  ag_agendamento:    'Ag. Agendamento',
-  agendado:          'Agendado',
-  contrato_enviado:  'Contrato Enviado',
-  contrato_assinado: 'Contrato Assinado',
-  followup:          'Follow-up',
+type HealthData = {
+  score: number
+  label: string
+  color: string
+  bg: string
+  atrasadas: number
+  concluidasRecente: number
+  totalAtivas: number
+}
+
+// ─── Health calculation ───────────────────────────────────────────────────────
+
+function calcHealth(atrasadas: number, concluidasRecente: number, totalAtivas: number): HealthData {
+  const totalTasks   = totalAtivas + concluidasRecente
+  const onTimeRatio  = totalTasks > 0 ? concluidasRecente / totalTasks : 0
+  const overdueRatio = totalAtivas > 0 ? atrasadas / totalAtivas : 0
+  const score        = Math.round((onTimeRatio * 50) + ((1 - overdueRatio) * 50))
+  const clamped      = Math.max(0, Math.min(100, score))
+
+  if (clamped >= 85) return { score: clamped, label: 'Excelente', color: 'text-emerald-400', bg: 'bg-emerald-500/10', atrasadas, concluidasRecente, totalAtivas }
+  if (clamped >= 70) return { score: clamped, label: 'Bom',       color: 'text-sky-400',     bg: 'bg-sky-500/10',     atrasadas, concluidasRecente, totalAtivas }
+  if (clamped >= 50) return { score: clamped, label: 'Regular',   color: 'text-amber-400',   bg: 'bg-amber-500/10',   atrasadas, concluidasRecente, totalAtivas }
+  if (clamped >= 30) return { score: clamped, label: 'Atenção',   color: 'text-orange-400',  bg: 'bg-orange-500/10',  atrasadas, concluidasRecente, totalAtivas }
+  return              { score: clamped, label: 'Crítico',  color: 'text-red-400',     bg: 'bg-red-500/10',     atrasadas, concluidasRecente, totalAtivas }
 }
 
 // ─── Module ───────────────────────────────────────────────────────────────────
@@ -37,16 +50,13 @@ export function CentroDeComandoModule() {
   const [loading, setLoading]                     = useState(true)
   const [atrasadas, setAtrasadas]                 = useState<TarefaAtrasada[]>([])
   const [reunioes, setReunioes]                   = useState<Reuniao[]>([])
-  const [parados, setParados]                     = useState<ProjetoParado[]>([])
-  const [sobrecarregados, setSobrecarregados]     = useState<Membro[]>([])
-  const [etapas, setEtapas]                       = useState<Etapa[]>([])
   const [calendarConnected, setCalendarConnected] = useState(false)
+  const [health, setHealth]                       = useState<HealthData | null>(null)
+  const [projetosAtivos, setProjetosAtivos]       = useState(0)
   const [prioridades, setPrioridades]             = useState('')
   const [loadingAI, setLoadingAI]                 = useState(false)
 
-  useEffect(() => { loadAll() }, [])
-
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoading(false); return }
@@ -56,122 +66,73 @@ export function CentroDeComandoModule() {
 
     await Promise.all([
       loadTarefas(user.id, todayStr, today),
-      loadProjetos(user.id, today),
-      loadMembros(user.id),
-      loadPipeline(),
       loadCalendar(user.id),
+      loadProjetos(),
     ])
 
     setLoading(false)
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  // ── Tarefas atrasadas ──────────────────────────────────────────────────────
+  useEffect(() => { loadAll() }, [loadAll])
+
+  // ── Tarefas + saúde operacional ────────────────────────────────────────────
 
   async function loadTarefas(userId: string, todayStr: string, today: Date) {
-    const [{ data: tarefasData }, projRes] = await Promise.all([
+    const thirtyDaysAgo = new Date(today.getTime() - 30 * 86400000).toISOString()
+
+    const [{ data: tarefasData }, projRes, { data: concluidasData }, { data: ativasData }] = await Promise.all([
+      // Atrasadas
       supabase
         .from('tarefas')
         .select('id, title, due_date, projeto_id')
         .or(`user_id.eq.${userId},assignee_id.eq.${userId}`)
         .lt('due_date', todayStr)
-        .neq('status', 'concluido')
+        .not('status', 'in', '("concluido","arquivado")')
         .order('due_date', { ascending: true }),
+
       fetch('/api/projetos'),
+
+      // Concluídas nos últimos 30 dias
+      supabase
+        .from('tarefas')
+        .select('id', { count: 'exact', head: true })
+        .or(`user_id.eq.${userId},assignee_id.eq.${userId}`)
+        .eq('status', 'concluido')
+        .gte('created_at', thirtyDaysAgo),
+
+      // Total ativas (não concluídas, não arquivadas)
+      supabase
+        .from('tarefas')
+        .select('id', { count: 'exact', head: true })
+        .or(`user_id.eq.${userId},assignee_id.eq.${userId}`)
+        .not('status', 'in', '("concluido","arquivado")'),
     ])
 
     const projetos: { id: string; nome: string }[] = projRes.ok ? await projRes.json() : []
     const projMap: Record<string, string> = {}
     projetos.forEach(p => { projMap[p.id] = p.nome })
 
-    setAtrasadas((tarefasData ?? []).map((t: { id: string; title: string; due_date: string; projeto_id: string | null }) => {
-      const due       = new Date(t.due_date + 'T12:00:00')
+    const atrasadasList = (tarefasData ?? []).map((t: { id: string; title: string; due_date: string; projeto_id: string | null }) => {
+      const due        = new Date(t.due_date + 'T12:00:00')
       const diasAtraso = Math.floor((today.getTime() - due.getTime()) / 86400000)
       return { id: t.id, title: t.title, due_date: t.due_date, diasAtraso, projetoNome: t.projeto_id ? projMap[t.projeto_id] : undefined }
-    }))
-  }
-
-  // ── Projetos parados ───────────────────────────────────────────────────────
-
-  async function loadProjetos(userId: string, today: Date) {
-    const projRes = await fetch('/api/projetos')
-    if (!projRes.ok) return
-    const projetos: { id: string; nome: string; created_at: string }[] = await projRes.json()
-
-    const { data: tasks } = await supabase
-      .from('tarefas')
-      .select('projeto_id, created_at')
-      .or(`user_id.eq.${userId},assignee_id.eq.${userId}`)
-      .neq('status', 'concluido')
-      .not('projeto_id', 'is', null)
-      .order('created_at', { ascending: false })
-
-    const lastActivity: Record<string, Date> = {}
-    ;(tasks ?? []).forEach((t: { projeto_id: string; created_at: string }) => {
-      if (t.projeto_id && !lastActivity[t.projeto_id]) {
-        lastActivity[t.projeto_id] = new Date(t.created_at)
-      }
     })
 
-    setParados(
-      projetos
-        .map(p => {
-          const last      = lastActivity[p.id] ?? new Date(p.created_at)
-          const diasParado = Math.floor((today.getTime() - last.getTime()) / 86400000)
-          return { id: p.id, nome: p.nome, diasParado }
-        })
-        .filter(p => p.diasParado >= 7)
-        .sort((a, b) => b.diasParado - a.diasParado)
-    )
+    setAtrasadas(atrasadasList)
+
+    const concluidasRecente = concluidasData?.length ?? 0
+    const totalAtivas       = ativasData?.length ?? 0
+    setHealth(calcHealth(atrasadasList.length, concluidasRecente, totalAtivas))
   }
 
-  // ── Membros sobrecarregados ────────────────────────────────────────────────
+  // ── Projetos ativos ────────────────────────────────────────────────────────
 
-  async function loadMembros(userId: string) {
-    const wsRes = await fetch('/api/team/workspace')
-    if (!wsRes.ok) return
-    const ws      = await wsRes.json()
-    const members: { id: string; nome: string }[] = ws.members ?? []
-    if (members.length === 0) return
-
-    const { data: tasks } = await supabase
-      .from('tarefas')
-      .select('assignee_id')
-      .eq('user_id', userId)
-      .neq('status', 'concluido')
-      .not('assignee_id', 'is', null)
-
-    const counts: Record<string, number> = {}
-    ;(tasks ?? []).forEach((t: { assignee_id: string }) => {
-      if (t.assignee_id) counts[t.assignee_id] = (counts[t.assignee_id] ?? 0) + 1
-    })
-
-    setSobrecarregados(
-      members
-        .filter(m => (counts[m.id] ?? 0) >= 5)
-        .map(m => ({ id: m.id, nome: m.nome, tarefasAtivas: counts[m.id] ?? 0 }))
-        .sort((a, b) => b.tarefasAtivas - a.tarefasAtivas)
-    )
-  }
-
-  // ── Pipeline ───────────────────────────────────────────────────────────────
-
-  async function loadPipeline() {
-    const res = await fetch('/api/pipeline/leads')
+  async function loadProjetos() {
+    const res = await fetch('/api/projetos')
     if (!res.ok) return
-    const leads: { stage: string }[] = await res.json()
-
-    const counts: Record<string, number> = {}
-    leads.forEach(l => {
-      if (l.stage && l.stage !== 'perdido') {
-        counts[l.stage] = (counts[l.stage] ?? 0) + 1
-      }
-    })
-
-    setEtapas(
-      Object.entries(counts)
-        .map(([stage, count]) => ({ stage, label: STAGE_LABELS[stage] ?? stage, count }))
-        .sort((a, b) => b.count - a.count)
-    )
+    const projetos: unknown[] = await res.json()
+    setProjetosAtivos(projetos.length)
   }
 
   // ── Google Calendar ────────────────────────────────────────────────────────
@@ -194,23 +155,16 @@ export function CentroDeComandoModule() {
       url.searchParams.set('timeMax', end.toISOString())
       url.searchParams.set('singleEvents', 'true')
       url.searchParams.set('orderBy', 'startTime')
-      url.searchParams.set('maxResults', '5')
+      url.searchParams.set('maxResults', '10')
 
-      const res = await fetch(url.toString(), {
-        headers: { Authorization: `Bearer ${data.gcal_access_token}` },
-      })
-
+      const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${data.gcal_access_token}` } })
       if (res.ok) {
         const calData = await res.json()
-        setReunioes(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (calData.items ?? []).map((ev: any) => ({
-            id:     ev.id,
-            titulo: ev.summary ?? '(sem título)',
-            inicio: ev.start?.dateTime ?? ev.start?.date ?? '',
-            link:   ev.hangoutLink,
-          }))
-        )
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setReunioes((calData.items ?? []).map((ev: any) => ({
+          id: ev.id, titulo: ev.summary ?? '(sem título)',
+          inicio: ev.start?.dateTime ?? ev.start?.date ?? '', link: ev.hangoutLink,
+        })))
       }
     } catch { /* silent */ }
   }
@@ -221,14 +175,12 @@ export function CentroDeComandoModule() {
     setLoadingAI(true)
     try {
       const res = await fetch('/api/centro/prioridades', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          tarefasAtrasadas:       atrasadas.map(t => ({ titulo: t.title, diasAtraso: t.diasAtraso, projeto: t.projetoNome })),
-          reunioes:               reunioes.map(r => ({ titulo: r.titulo, inicio: r.inicio })),
-          projetosParados:        parados.map(p => ({ nome: p.nome, diasParado: p.diasParado })),
-          membrossobrecarregados: sobrecarregados.map(m => ({ nome: m.nome, tarefasAtivas: m.tarefasAtivas })),
-          etapasAcumuladas:       etapas.filter(e => e.count >= 3).map(e => ({ etapa: e.label, quantidade: e.count })),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tarefasAtrasadas: atrasadas.map(t => ({ titulo: t.title, diasAtraso: t.diasAtraso, projeto: t.projetoNome })),
+          reunioes:         reunioes.map(r => ({ titulo: r.titulo, inicio: r.inicio })),
+          saudeOperacional: health ? { score: health.score, label: health.label, atrasadas: health.atrasadas, concluidasRecente: health.concluidasRecente } : null,
+          projetosAtivos,
         }),
       })
       const data = await res.json()
@@ -243,9 +195,7 @@ export function CentroDeComandoModule() {
     if (!dateStr) return '—'
     const d       = new Date(dateStr)
     const isToday = d.toDateString() === new Date().toDateString()
-    if (isToday) {
-      return `Hoje, ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
-    }
+    if (isToday) return `Hoje, ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
     return d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
   }
 
@@ -266,53 +216,113 @@ export function CentroDeComandoModule() {
         </Button>
       </div>
 
-      {/* KPI summary */}
+      {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          {
-            label: 'Tarefas Atrasadas',
-            value: atrasadas.length,
-            icon:  AlertTriangle,
-            color: atrasadas.length > 0 ? 'text-red-400'    : 'text-muted-foreground',
-            bg:    atrasadas.length > 0 ? 'bg-red-500/10'   : 'bg-muted/30',
-          },
-          {
-            label: calendarConnected ? 'Reuniões (7 dias)' : 'Google Agenda',
-            value: calendarConnected ? reunioes.length       : '—',
-            icon:  Calendar,
-            color: 'text-sky-400',
-            bg:    'bg-sky-500/10',
-          },
-          {
-            label: 'Projetos Parados',
-            value: parados.length,
-            icon:  FolderOpen,
-            color: parados.length > 0 ? 'text-amber-400'    : 'text-muted-foreground',
-            bg:    parados.length > 0 ? 'bg-amber-500/10'   : 'bg-muted/30',
-          },
-          {
-            label: 'Membros Sobrecrg.',
-            value: sobrecarregados.length,
-            icon:  UsersRound,
-            color: sobrecarregados.length > 0 ? 'text-orange-400'  : 'text-muted-foreground',
-            bg:    sobrecarregados.length > 0 ? 'bg-orange-500/10' : 'bg-muted/30',
-          },
-        ].map(kpi => (
-          <div key={kpi.label} className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3">
-            <div className={`w-9 h-9 rounded-lg ${kpi.bg} flex items-center justify-center shrink-0`}>
-              <kpi.icon size={15} className={kpi.color} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold text-foreground leading-none">
-                {loading ? '–' : kpi.value}
-              </p>
-              <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{kpi.label}</p>
-            </div>
+        {/* Tarefas atrasadas */}
+        <div className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${atrasadas.length > 0 ? 'bg-red-500/10' : 'bg-muted/30'}`}>
+            <AlertTriangle size={15} className={atrasadas.length > 0 ? 'text-red-400' : 'text-muted-foreground'} />
           </div>
-        ))}
+          <div className="min-w-0">
+            <p className="text-2xl font-bold text-foreground leading-none">{loading ? '–' : atrasadas.length}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Tarefas Atrasadas</p>
+          </div>
+        </div>
+
+        {/* Reuniões */}
+        <div className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3">
+          <div className="w-9 h-9 rounded-lg bg-sky-500/10 flex items-center justify-center shrink-0">
+            <Calendar size={15} className="text-sky-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-2xl font-bold text-foreground leading-none">
+              {loading ? '–' : calendarConnected ? reunioes.length : '—'}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+              {calendarConnected ? 'Reuniões (7 dias)' : 'Google Agenda'}
+            </p>
+          </div>
+        </div>
+
+        {/* Projetos ativos */}
+        <div className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3">
+          <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+            <FolderOpen size={15} className="text-violet-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-2xl font-bold text-foreground leading-none">{loading ? '–' : projetosAtivos}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Projetos Ativos</p>
+          </div>
+        </div>
+
+        {/* Saúde operacional */}
+        <div className={`flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3 ${health ? health.bg : 'bg-muted/30'}`}>
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${health ? health.bg : 'bg-muted/30'}`}>
+            <Activity size={15} className={health ? health.color : 'text-muted-foreground'} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-1.5">
+              <p className={`text-2xl font-bold leading-none ${health ? health.color : 'text-muted-foreground'}`}>
+                {loading ? '–' : health ? health.score : '—'}
+              </p>
+              {health && !loading && <span className="text-[10px] text-muted-foreground">/100</span>}
+            </div>
+            <p className={`text-[10px] mt-0.5 leading-tight font-medium ${health ? health.color : 'text-muted-foreground'}`}>
+              {loading ? 'Calculando…' : health ? `Saúde ${health.label}` : 'Saúde Operacional'}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Main grid */}
+      {/* Saúde operacional — detalhe */}
+      {!loading && health && (
+        <Card className={`border-border bg-card`}>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity size={14} className={health.color} />
+                <CardTitle className="text-sm font-semibold">Saúde Operacional</CardTitle>
+                <Badge className={`text-[10px] border-0 ${health.bg} ${health.color}`}>{health.label}</Badge>
+              </div>
+              <span className={`text-2xl font-bold tabular-nums ${health.color}`}>{health.score}<span className="text-sm font-normal text-muted-foreground">/100</span></span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* Score bar */}
+            <div className="h-2 bg-muted/50 rounded-full overflow-hidden mb-4">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${
+                  health.score >= 85 ? 'bg-emerald-400' :
+                  health.score >= 70 ? 'bg-sky-400' :
+                  health.score >= 50 ? 'bg-amber-400' :
+                  health.score >= 30 ? 'bg-orange-400' : 'bg-red-400'
+                }`}
+                style={{ width: `${health.score}%` }}
+              />
+            </div>
+            {/* Breakdown */}
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="bg-muted/30 rounded-lg px-3 py-2.5">
+                <p className="text-lg font-bold text-red-400 tabular-nums">{health.atrasadas}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Atrasadas</p>
+              </div>
+              <div className="bg-muted/30 rounded-lg px-3 py-2.5">
+                <p className="text-lg font-bold text-emerald-400 tabular-nums">{health.concluidasRecente}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Concluídas (30d)</p>
+              </div>
+              <div className="bg-muted/30 rounded-lg px-3 py-2.5">
+                <p className="text-lg font-bold text-foreground tabular-nums">{health.totalAtivas}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Em aberto</p>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-3">
+              Índice calculado com base na proporção de tarefas atrasadas e entregas concluídas nos últimos 30 dias.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tarefas + Reuniões */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Tarefas atrasadas */}
@@ -333,7 +343,7 @@ export function CentroDeComandoModule() {
               <EmptyRow text="Nenhuma tarefa atrasada" />
             ) : (
               <div className="space-y-2">
-                {atrasadas.slice(0, 5).map(t => (
+                {atrasadas.slice(0, 8).map(t => (
                   <div key={t.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-red-500/5 border border-red-500/10">
                     <div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5 shrink-0" />
                     <div className="flex-1 min-w-0">
@@ -347,9 +357,9 @@ export function CentroDeComandoModule() {
                     </Badge>
                   </div>
                 ))}
-                {atrasadas.length > 5 && (
+                {atrasadas.length > 8 && (
                   <p className="text-[11px] text-muted-foreground text-center pt-1">
-                    +{atrasadas.length - 5} mais
+                    +{atrasadas.length - 8} mais
                   </p>
                 )}
               </div>
@@ -402,12 +412,7 @@ export function CentroDeComandoModule() {
                       </p>
                     </div>
                     {r.link && (
-                      <a
-                        href={r.link}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[10px] text-sky-400 hover:underline shrink-0 pt-0.5"
-                      >
+                      <a href={r.link} target="_blank" rel="noreferrer" className="text-[10px] text-sky-400 hover:underline shrink-0 pt-0.5">
                         Entrar
                       </a>
                     )}
@@ -417,109 +422,7 @@ export function CentroDeComandoModule() {
             )}
           </CardContent>
         </Card>
-
-        {/* Projetos parados */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FolderOpen size={14} className="text-amber-400" />
-                <CardTitle className="text-sm font-semibold">Projetos Parados</CardTitle>
-              </div>
-              <Link href="/projetos" className="text-[11px] text-primary hover:underline">Ver todos</Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <LoadingRow />
-            ) : parados.length === 0 ? (
-              <EmptyRow text="Nenhum projeto parado" />
-            ) : (
-              <div className="space-y-2">
-                {parados.slice(0, 5).map(p => (
-                  <div key={p.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/10">
-                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                    <p className="text-xs font-medium text-foreground flex-1 truncate">{p.nome}</p>
-                    <Badge className="bg-amber-500/15 text-amber-400 border-0 text-[10px] shrink-0">
-                      {p.diasParado}d parado
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Etapas acumuladas */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <BarChart3 size={14} className="text-primary" />
-                <CardTitle className="text-sm font-semibold">Etapas Acumuladas</CardTitle>
-              </div>
-              <Link href="/pipeline" className="text-[11px] text-primary hover:underline">Ver pipeline</Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <LoadingRow />
-            ) : etapas.length === 0 ? (
-              <EmptyRow text="Pipeline vazio" />
-            ) : (
-              <div className="space-y-2.5">
-                {etapas.map(e => {
-                  const maxCount = Math.max(...etapas.map(x => x.count))
-                  const pct      = maxCount > 0 ? Math.round((e.count / maxCount) * 100) : 0
-                  const alert    = e.count >= 3
-                  return (
-                    <div key={e.stage} className="flex items-center gap-3">
-                      <p className="text-[11px] text-muted-foreground w-28 shrink-0 truncate">{e.label}</p>
-                      <div className="flex-1 h-1.5 rounded-full bg-muted/50 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${alert ? 'bg-primary' : 'bg-muted-foreground/30'}`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <Badge className={`text-[10px] border-0 shrink-0 ${alert ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                        {e.count}
-                      </Badge>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
-
-      {/* Membros sobrecarregados — só aparece se houver */}
-      {!loading && sobrecarregados.length > 0 && (
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <UsersRound size={14} className="text-orange-400" />
-              <CardTitle className="text-sm font-semibold">Membros Sobrecarregados</CardTitle>
-              <Badge className="bg-orange-500/15 text-orange-400 border-0 text-[10px]">5+ tarefas ativas</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {sobrecarregados.map(m => (
-                <div key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/5 border border-orange-500/10">
-                  <div className="w-7 h-7 rounded-full bg-orange-500/20 flex items-center justify-center text-[11px] font-bold text-orange-400 shrink-0">
-                    {m.nome.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-foreground">{m.nome}</p>
-                    <p className="text-[10px] text-muted-foreground">{m.tarefasAtivas} tarefas ativas</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Prioridades do dia com IA */}
       <Card className="bg-card border-border ring-1 ring-primary/15">
@@ -529,17 +432,11 @@ export function CentroDeComandoModule() {
               <Sparkles size={14} className="text-primary" />
               <CardTitle className="text-sm font-semibold">Prioridades do Dia com IA</CardTitle>
             </div>
-            <Button
-              size="sm"
-              onClick={gerarPrioridades}
-              disabled={loadingAI || loading}
-              className="h-7 text-xs"
-            >
-              {loadingAI ? (
-                <><Loader2 size={12} className="animate-spin" /> Gerando…</>
-              ) : (
-                <><Sparkles size={12} /> {prioridades ? 'Regerar' : 'Gerar Prioridades'}</>
-              )}
+            <Button size="sm" onClick={gerarPrioridades} disabled={loadingAI || loading} className="h-7 text-xs">
+              {loadingAI
+                ? <><Loader2 size={12} className="animate-spin" /> Gerando…</>
+                : <><Sparkles size={12} /> {prioridades ? 'Regerar' : 'Gerar Prioridades'}</>
+              }
             </Button>
           </div>
         </CardHeader>

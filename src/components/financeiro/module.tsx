@@ -481,6 +481,7 @@ export function FinanceiroModule() {
   const totalCustos   = custos.reduce((s, r) => s + r.valor, 0)
   const lucro         = totalReceitas - totalCustos
   const margem        = totalReceitas > 0 ? (lucro / totalReceitas) * 100 : 0
+  const mrr           = receitas.filter(r => r.categoria === 'retainer').reduce((s, r) => s + r.valor, 0)
 
   return (
     <div className="space-y-6 max-w-[1100px]">
@@ -503,9 +504,10 @@ export function FinanceiroModule() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Total Receitas" value={fmtBRL(totalReceitas)} colorClass="bg-emerald-500/15" iconClass="text-emerald-400" icon={TrendingUp} />
-        <KpiCard label="Total de Custos" value={fmtBRL(totalCustos)} colorClass="bg-red-500/15" iconClass="text-red-400" icon={TrendingDown} />
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <KpiCard label="MRR" value={fmtBRL(mrr)} sub="Receita recorrente" colorClass="bg-sky-500/15" iconClass="text-sky-400" icon={TrendingUp} />
+        <KpiCard label="Receita do Mês" value={fmtBRL(totalReceitas)} colorClass="bg-emerald-500/15" iconClass="text-emerald-400" icon={TrendingUp} />
+        <KpiCard label="Custo do Mês" value={fmtBRL(totalCustos)} colorClass="bg-red-500/15" iconClass="text-red-400" icon={TrendingDown} />
         <KpiCard label="Lucro Líquido" value={fmtBRL(lucro)} sub={lucro >= 0 ? 'Positivo' : 'Negativo'} trend={lucro >= 0 ? 'up' : 'down'} colorClass={lucro >= 0 ? 'bg-primary/15' : 'bg-red-500/15'} iconClass={lucro >= 0 ? 'text-primary' : 'text-red-400'} icon={DollarSign} />
         <KpiCard label="Margem" value={`${margem.toFixed(1)}%`} sub={margem >= 20 ? 'Saudável' : margem < 0 ? 'Negativa' : 'Atenção'} trend={margem >= 20 ? 'up' : margem < 0 ? 'down' : null} colorClass="bg-violet-500/15" iconClass="text-violet-400" icon={TrendingUp} />
       </div>
