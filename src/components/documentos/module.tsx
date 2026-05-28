@@ -332,11 +332,12 @@ export function DocumentosModule() {
       let token = data.gdrive_access_token
       if (data.gdrive_refresh_token) {
         try {
-          const res     = await fetch('/api/auth/google/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: data.gdrive_refresh_token }) })
+          const res       = await fetch('/api/auth/google/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: data.gdrive_refresh_token }) })
           const refreshed = await res.json()
           if (refreshed.access_token) {
             token = refreshed.access_token
-            await supabase.from('integracoes').upsert({ user_id: user.id, gdrive_access_token: refreshed.access_token }, { onConflict: 'user_id' })
+            // Row already exists (we just read from it), so always UPDATE
+            await supabase.from('integracoes').update({ gdrive_access_token: refreshed.access_token }).eq('user_id', user.id)
           }
         } catch { /* fallback to stored token */ }
       }
@@ -392,10 +393,25 @@ export function DocumentosModule() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      await supabase.from('integracoes').upsert({
-        user_id: user.id, gdrive_access_token: at, gdrive_refresh_token: rt,
-        gdrive_email: email, gdrive_name: name, gdrive_connected_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' })
+      const driveFields = {
+        gdrive_access_token: at, gdrive_refresh_token: rt,
+        gdrive_email: email, gdrive_name: name,
+        gdrive_connected_at: new Date().toISOString(),
+      }
+
+      // Check whether a row already exists for this user
+      const { data: existing } = await supabase
+        .from('integracoes').select('user_id').eq('user_id', user.id).maybeSingle()
+
+      if (existing) {
+        // Row exists (Calendar may have created it) — just update the Drive columns
+        const { error } = await supabase.from('integracoes').update(driveFields).eq('user_id', user.id)
+        if (error) { setAuthError('Erro ao salvar conexão: ' + error.message); return }
+      } else {
+        // No row yet — insert fresh
+        const { error } = await supabase.from('integracoes').insert({ user_id: user.id, ...driveFields })
+        if (error) { setAuthError('Erro ao salvar conexão: ' + error.message); return }
+      }
 
       setAccessToken(at); setRefreshToken(rt); setConnectedEmail(email)
       setStatus('connected')

@@ -139,7 +139,7 @@ function AddManualModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
 
   return (
     <Modal>
-      <ModalHeader title="Convidar para equipe" sub="Cria conta com acesso ao sistema" onClose={onClose} />
+      <ModalHeader title="Convidar membro" sub="Cria conta com email e senha" onClose={onClose} />
       <div className="px-5 py-5 space-y-3">
         <Field icon={<UserPlus size={13} />} label="Nome completo">
           <input value={form.nome} onChange={e => field('nome', e.target.value)} placeholder="Ana Silva" className={inp} autoFocus />
@@ -210,7 +210,7 @@ function AddOrgModal({
 
   return (
     <Modal>
-      <ModalHeader title="Cadastro de organograma" sub="Adiciona ao organograma sem criar conta" onClose={onClose} />
+      <ModalHeader title="Adicionar membro" sub="Sem email e senha" onClose={onClose} />
       <div className="px-5 py-5 space-y-3">
         <Field icon={<UserCog size={13} />} label={<>Nome completo <span className="text-red-400">*</span></>}>
           <input value={form.nome} onChange={e => field('nome', e.target.value)} onKeyDown={e => e.key === 'Enter' && save()} placeholder="Carlos Souza" className={inp} autoFocus />
@@ -708,8 +708,8 @@ export default function EquipePage() {
               >
                 <UserPlus size={14} className="text-primary shrink-0" />
                 <div>
-                  <p className="font-medium">Convidar para equipe</p>
-                  <p className="text-muted-foreground">Cria conta com acesso ao sistema</p>
+                  <p className="font-medium">Convidar membro</p>
+                  <p className="text-muted-foreground">Cria conta com email e senha</p>
                 </div>
               </button>
               <div className="border-t border-border" />
@@ -719,8 +719,8 @@ export default function EquipePage() {
               >
                 <UserCog size={14} className="text-primary shrink-0" />
                 <div>
-                  <p className="font-medium">Cadastro de organograma</p>
-                  <p className="text-muted-foreground">Adiciona sem criar conta, com hierarquia</p>
+                  <p className="font-medium">Adicionar membro</p>
+                  <p className="text-muted-foreground">Sem email e senha, aparece no organograma</p>
                 </div>
               </button>
             </div>
