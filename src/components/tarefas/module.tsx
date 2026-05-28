@@ -5,6 +5,7 @@ import {
   Plus, LayoutGrid, List, X, Clock, MessageSquare,
   Circle, PlayCircle, Eye, CheckCircle2, Pencil, Hourglass,
   Trash2, ChevronDown, ChevronLeft, ChevronRight, GanttChart, FolderOpen,
+  Lock, AlertTriangle,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -32,6 +33,7 @@ interface OpTask {
   createdAt: string
   projetoId: string | null
   projetoNome: string | null
+  dependencias: string[]
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -70,7 +72,7 @@ function isOverdue(d: string) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function fromRow(r: any): OpTask {
+function fromRow(r: any, deps: string[] = []): OpTask {
   return {
     id:                 r.id,
     title:              r.title ?? '',
@@ -85,22 +87,30 @@ function fromRow(r: any): OpTask {
     createdAt:          r.created_at ?? new Date().toISOString(),
     projetoId:          r.projeto_id ?? null,
     projetoNome:        r.projetos?.nome ?? null,
+    dependencias:       deps,
   }
+}
+
+function getBlockers(task: OpTask, allTasks: OpTask[]): string[] {
+  return task.dependencias
+    .map(id => allTasks.find(t => t.id === id))
+    .filter((t): t is OpTask => !!t && t.status !== 'concluido')
+    .map(t => t.title)
 }
 
 // ─── GanttView ────────────────────────────────────────────────────────────────
 
 const PT_WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
 const PT_MONTHS   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-const CELL = 32   // px por dia
-const ROW  = 44   // px por tarefa
-const HDR  = 52   // px do cabeçalho
+const CELL = 32
+const ROW  = 44
+const HDR  = 52
 
 function dayOnly(d: Date) {
   const r = new Date(d); r.setHours(0,0,0,0); return r
 }
 
-function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => void }) {
+function GanttView({ tasks, allTasks, onEdit }: { tasks: OpTask[]; allTasks: OpTask[]; onEdit: (t: OpTask) => void }) {
   const today = useMemo(() => dayOnly(new Date()), [])
 
   const [winStart, setWinStart] = useState<Date>(() => {
@@ -114,7 +124,6 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
     const d = new Date(winStart); d.setDate(winStart.getDate() + i); return d
   }), [winStart])
 
-  // group days by month for the top header
   const monthGroups = useMemo(() => {
     const groups: { label: string; count: number }[] = []
     for (const d of days) {
@@ -141,7 +150,6 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
     const d = dayOnly(new Date()); d.setDate(d.getDate() - 14); setWinStart(d)
   }
 
-  // Scroll so today is visible on mount
   useEffect(() => {
     if (scrollRef.current && todayOff >= 0) {
       scrollRef.current.scrollLeft = Math.max(0, todayOff * CELL - 120)
@@ -152,7 +160,6 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
 
   return (
     <div className="space-y-3">
-      {/* Nav */}
       <div className="flex items-center gap-2">
         <button onClick={() => navigate(-1)} className="w-7 h-7 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all">
           <ChevronLeft size={13} />
@@ -168,10 +175,7 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
         </span>
       </div>
 
-      {/* Grid */}
       <div className="rounded-xl border border-border overflow-hidden flex select-none">
-
-        {/* Left: task names */}
         <div className="w-52 shrink-0 border-r border-border z-10 bg-card">
           <div style={{ height: HDR }} className="flex items-end px-4 pb-2.5 border-b border-border bg-muted/30">
             <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Tarefa</span>
@@ -183,6 +187,7 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
           )}
           {tasks.map(task => {
             const cfg = STATUS_CFG[task.status]
+            const blocked = getBlockers(task, allTasks).length > 0
             return (
               <div
                 key={task.id}
@@ -192,16 +197,14 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
               >
                 <span className={cfg.color + ' shrink-0'}>{cfg.icon}</span>
                 <span className="text-xs text-foreground truncate flex-1">{task.title}</span>
+                {blocked && <Lock size={10} className="text-amber-400 shrink-0" />}
               </div>
             )
           })}
         </div>
 
-        {/* Right: scrollable timeline */}
         <div ref={scrollRef} className="flex-1 overflow-x-auto">
           <div style={{ width: totalW }} className="relative">
-
-            {/* Month row */}
             <div style={{ height: HDR / 2 }} className="flex border-b border-border bg-muted/20">
               {monthGroups.map((mg, i) => (
                 <div
@@ -214,7 +217,6 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
               ))}
             </div>
 
-            {/* Day row */}
             <div style={{ height: HDR / 2 }} className="flex border-b border-border bg-muted/30">
               {days.map((d, i) => {
                 const isToday = i === todayOff
@@ -237,7 +239,6 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
               })}
             </div>
 
-            {/* Task rows */}
             {tasks.length === 0 && (
               <div style={{ height: ROW * 3, width: totalW }} className="flex items-center justify-center">
                 <p className="text-xs text-muted-foreground">Nenhuma tarefa para exibir</p>
@@ -257,6 +258,7 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
 
               const cfg     = STATUS_CFG[task.status]
               const overdue = !!task.dueDate && isOverdue(task.dueDate) && task.status !== 'concluido'
+              const blocked = getBlockers(task, allTasks).length > 0
 
               return (
                 <div
@@ -264,12 +266,10 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
                   style={{ height: ROW, width: totalW }}
                   className="relative border-b border-border/40"
                 >
-                  {/* Weekend shading columns */}
                   {days.map((d, i) => (d.getDay() === 0 || d.getDay() === 6) ? (
                     <div key={i} style={{ left: i * CELL, width: CELL, height: ROW }} className="absolute bg-muted/25 pointer-events-none" />
                   ) : null)}
 
-                  {/* Today vertical line */}
                   {todayOff >= 0 && todayOff < DAYS && (
                     <div
                       style={{ left: todayOff * CELL + CELL / 2 - 0.5, height: ROW }}
@@ -277,19 +277,21 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
                     />
                   )}
 
-                  {/* Bar */}
                   {visible && (
                     <div
                       style={{ left: barL + 2, width: barW - 4, top: (ROW - 28) / 2, height: 28 }}
                       className={`absolute rounded-lg flex items-center px-2.5 overflow-hidden cursor-pointer border
                         hover:brightness-110 transition-all z-20
-                        ${overdue
+                        ${blocked
+                          ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                          : overdue
                           ? 'bg-red-500/20 border-red-500/40 text-red-300'
                           : `${cfg.bg} ${cfg.border} ${cfg.color}`
                         }`}
                       onClick={() => onEdit(task)}
-                      title={`${task.title}${task.dueDate ? ' · vence ' + fmtDate(task.dueDate) : ''}${overdue ? ' · ATRASADA' : ''}`}
+                      title={`${task.title}${blocked ? ' · BLOQUEADA' : ''}${task.dueDate ? ' · vence ' + fmtDate(task.dueDate) : ''}${overdue ? ' · ATRASADA' : ''}`}
                     >
+                      {blocked && <Lock size={9} className="mr-1.5 shrink-0" />}
                       <span className="text-[10px] font-medium truncate">{task.title}</span>
                     </div>
                   )}
@@ -300,10 +302,10 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
         </div>
       </div>
 
-      {/* Legend */}
       <div className="flex items-center gap-4 px-1">
         <span className="text-[10px] text-muted-foreground">Barra vai da data de criação até o prazo</span>
         <span className="flex items-center gap-1 text-[10px] text-red-400"><span className="w-2 h-2 rounded-sm bg-red-500/20 border border-red-500/40 inline-block" /> Atrasada</span>
+        <span className="flex items-center gap-1 text-[10px] text-amber-400"><Lock size={9} /> Bloqueada</span>
         <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><span className="w-px h-3 bg-primary/40 inline-block" /> Hoje</span>
       </div>
     </div>
@@ -313,21 +315,27 @@ function GanttView({ tasks, onEdit }: { tasks: OpTask[]; onEdit: (t: OpTask) => 
 // ─── TaskCard ─────────────────────────────────────────────────────────────────
 
 function TaskCard({
-  task, onEdit, onDelete,
+  task, blockers, onEdit, onDelete,
 }: {
   task: OpTask
+  blockers: string[]
   onEdit: (t: OpTask) => void
   onDelete: (id: string) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const pCfg   = PRIORITY_CFG[task.priority]
+  const pCfg    = PRIORITY_CFG[task.priority]
   const overdue = isOverdue(task.dueDate)
+  const blocked = blockers.length > 0
 
   return (
     <div
       draggable
       onDragStart={e => { e.dataTransfer.setData('taskId', task.id); e.dataTransfer.effectAllowed = 'move' }}
-      className="relative bg-card border border-border rounded-xl p-3.5 space-y-2 hover:border-primary/30 cursor-grab active:cursor-grabbing transition-all hover:shadow-md hover:shadow-primary/5 group"
+      className={`relative bg-card border rounded-xl p-3.5 space-y-2 cursor-grab active:cursor-grabbing transition-all hover:shadow-md group
+        ${blocked
+          ? 'border-amber-500/30 hover:border-amber-500/50 hover:shadow-amber-500/5'
+          : 'border-border hover:border-primary/30 hover:shadow-primary/5'
+        }`}
       onClick={() => onEdit(task)}
     >
       {/* Título + menu */}
@@ -335,15 +343,29 @@ function TaskCard({
         <p className="text-sm font-medium text-foreground leading-snug group-hover:text-primary/90 transition-colors line-clamp-2 flex-1">
           {task.title}
         </p>
-        <button
-          onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }}
-          className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-all shrink-0"
-        >
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-            <circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
-          </svg>
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          {blocked && (
+            <span title={`Bloqueada por: ${blockers.join(', ')}`}>
+              <Lock size={12} className="text-amber-400" />
+            </span>
+          )}
+          <button
+            onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }}
+            className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+              <circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
+            </svg>
+          </button>
+        </div>
       </div>
+
+      {blocked && (
+        <p className="text-[10px] text-amber-400/80 flex items-center gap-1">
+          <Lock size={9} />
+          Aguardando: {blockers.slice(0, 2).join(', ')}{blockers.length > 2 ? ` +${blockers.length - 2}` : ''}
+        </p>
+      )}
 
       {task.client && <p className="text-xs text-muted-foreground">{task.client}</p>}
 
@@ -361,7 +383,6 @@ function TaskCard({
         </div>
       )}
 
-      {/* Prioridade + prazo */}
       <div className="flex items-center justify-between gap-2 pt-0.5">
         <Badge className={`${pCfg.color} border-0 text-[10px] px-1.5 h-5 gap-1 shrink-0`}>
           <span className={`w-1.5 h-1.5 rounded-full ${pCfg.dot}`} />
@@ -376,7 +397,6 @@ function TaskCard({
         )}
       </div>
 
-      {/* Responsável */}
       {task.assignee && (
         <div className="flex items-center gap-1.5">
           <Avatar className="w-4 h-4 shrink-0">
@@ -408,7 +428,7 @@ function TaskCard({
 // ─── TaskFormPanel ────────────────────────────────────────────────────────────
 
 function TaskFormPanel({
-  task, onSave, onClose, onDelete, clientNames, memberNames, projetos,
+  task, onSave, onClose, onDelete, clientNames, memberNames, projetos, allTasks,
 }: {
   task: Partial<OpTask> | null
   onSave: (t: OpTask) => void
@@ -417,14 +437,18 @@ function TaskFormPanel({
   clientNames: string[]
   memberNames: string[]
   projetos: Projeto[]
+  allTasks: OpTask[]
 }) {
   const isEdit = !!task?.id
   const [form, setForm] = useState<Partial<OpTask>>({
     title: '', description: '', client: '', assignee: '', assigneeInitials: '',
     dueDate: '', priority: 'medium', status: 'novo', conversationOrigin: null,
-    projetoId: null, projetoNome: null,
+    projetoId: null, projetoNome: null, dependencias: [],
     ...task,
   })
+  const [formError, setFormError] = useState<string | null>(null)
+
+  const otherTasks = allTasks.filter(t => t.id !== task?.id)
 
   function field<K extends keyof OpTask>(key: K) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -437,8 +461,38 @@ function TaskFormPanel({
     }
   }
 
+  function toggleDep(depId: string, checked: boolean) {
+    setForm(f => ({
+      ...f,
+      dependencias: checked
+        ? [...(f.dependencias ?? []), depId]
+        : (f.dependencias ?? []).filter(id => id !== depId),
+    }))
+  }
+
   function save() {
     if (!form.title?.trim()) return
+    setFormError(null)
+
+    // Check if advancing status is blocked by unmet dependencies
+    const deps = form.dependencias ?? []
+    if (deps.length > 0) {
+      const originalStatus = task?.status ?? 'novo'
+      const newStatus      = form.status ?? 'novo'
+      const originalIdx    = STATUS_ORDER.indexOf(originalStatus)
+      const newIdx         = STATUS_ORDER.indexOf(newStatus)
+      if (newIdx > originalIdx) {
+        const blockers = deps
+          .map(id => allTasks.find(t => t.id === id))
+          .filter((t): t is OpTask => !!t && t.status !== 'concluido')
+          .map(t => t.title)
+        if (blockers.length > 0) {
+          setFormError(`Tarefa bloqueada. Conclua primeiro: ${blockers.join(', ')}`)
+          return
+        }
+      }
+    }
+
     onSave({
       id:                 task?.id ?? `task-${Date.now()}`,
       title:              form.title!.trim(),
@@ -453,6 +507,7 @@ function TaskFormPanel({
       createdAt:          task?.createdAt ?? new Date().toISOString(),
       projetoId:          form.projetoId ?? null,
       projetoNome:        form.projetoNome ?? null,
+      dependencias:       form.dependencias ?? [],
     })
   }
 
@@ -552,12 +607,60 @@ function TaskFormPanel({
             </div>
           </div>
 
+          {/* Dependências */}
+          <div>
+            <label className={lbl + ' flex items-center gap-1.5'}>
+              <Lock size={10} className="text-amber-400" />
+              Bloqueada por (dependências)
+            </label>
+            {otherTasks.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">Nenhuma outra tarefa disponível.</p>
+            ) : (
+              <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-muted/50 divide-y divide-border/50">
+                {otherTasks.map(t => {
+                  const checked = (form.dependencias ?? []).includes(t.id)
+                  const done    = t.status === 'concluido'
+                  return (
+                    <label
+                      key={t.id}
+                      className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-muted/60 transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={e => toggleDep(t.id, e.target.checked)}
+                        className="accent-primary shrink-0"
+                      />
+                      <span className={`text-xs truncate flex-1 ${done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                        {t.title}
+                      </span>
+                      {done
+                        ? <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
+                        : <Circle size={11} className="text-muted-foreground/40 shrink-0" />
+                      }
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+            <p className="text-[10px] text-muted-foreground mt-1.5">
+              Esta tarefa não poderá avançar de status enquanto as selecionadas não forem concluídas.
+            </p>
+          </div>
+
           <div>
             <label className={lbl}>Origem da conversa</label>
             <input value={form.conversationOrigin ?? ''} onChange={e => setForm(p => ({ ...p, conversationOrigin: e.target.value || null }))} placeholder="Ex: Ana Beatriz – Loja Bloom" className={inp} />
             <p className="text-[10px] text-muted-foreground mt-1">Deixe em branco se a tarefa não veio de uma conversa.</p>
           </div>
         </div>
+
+        {formError && (
+          <div className="mx-5 mb-2 flex items-start gap-2 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2.5">
+            <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-400">{formError}</p>
+          </div>
+        )}
 
         <div className="px-5 py-4 border-t border-border flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
@@ -595,6 +698,7 @@ export function TarefasModule() {
   const [clientNames, setClientNames]   = useState<string[]>([])
   const [memberNames, setMemberNames]   = useState<string[]>([])
   const [projetos, setProjetos]         = useState<Projeto[]>([])
+  const [blockedMsg, setBlockedMsg]     = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -603,18 +707,27 @@ export function TarefasModule() {
       if (!user) return
       setUserId(user.id)
 
-      const [projRes, { data: tarefasData }, { data: clientesData }] = await Promise.all([
+      const [projRes, { data: tarefasData }, { data: clientesData }, { data: depsData }] = await Promise.all([
         fetch('/api/projetos').then(r => r.ok ? r.json() : []),
         supabase.from('tarefas').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
         supabase.from('clientes').select('name').eq('user_id', user.id).order('name'),
+        supabase.from('tarefa_dependencias').select('tarefa_id, depende_de_id').eq('user_id', user.id),
       ])
 
       const projetosData: Projeto[] = Array.isArray(projRes) ? projRes : []
       setProjetos(projetosData)
       const projMap = new Map<string, string>(projetosData.map(p => [p.id, p.nome]))
 
+      // Build dependency map: tarefa_id → [depende_de_id]
+      const depMap = new Map<string, string[]>()
+      for (const dep of depsData ?? []) {
+        const arr = depMap.get(dep.tarefa_id) ?? []
+        arr.push(dep.depende_de_id)
+        depMap.set(dep.tarefa_id, arr)
+      }
+
       if (tarefasData) setTasks(tarefasData.map(r => {
-        const t = fromRow(r)
+        const t = fromRow(r, depMap.get(r.id) ?? [])
         if (t.projetoId) t.projetoNome = projMap.get(t.projetoId) ?? null
         return t
       }))
@@ -646,8 +759,13 @@ export function TarefasModule() {
     return true
   }), [tasks, filterStatus, filterDue, filterProjeto])
 
+  function showBlocked(taskTitle: string, blockers: string[]) {
+    setBlockedMsg(`"${taskTitle}" está bloqueada. Conclua primeiro: ${blockers.join(', ')}`)
+    setTimeout(() => setBlockedMsg(null), 6000)
+  }
+
   function openCreate(status?: OpStatus) {
-    setEditTask(status ? { status } : { status: 'novo' })
+    setEditTask(status ? { status, dependencias: [] } : { status: 'novo', dependencias: [] })
     setShowForm(true)
   }
 
@@ -672,10 +790,13 @@ export function TarefasModule() {
       projeto_id:         task.projetoId || null,
     }
     const isNew = !tasks.some(t => t.id === task.id)
+    let actualId = task.id
+
     if (isNew) {
       const { data } = await supabase.from('tarefas').insert(row).select().single()
       if (data) {
-        const newTask = fromRow(data)
+        actualId = data.id
+        const newTask = fromRow(data, task.dependencias)
         if (newTask.projetoId) newTask.projetoNome = projetos.find(p => p.id === newTask.projetoId)?.nome ?? null
         setTasks(prev => [...prev, newTask])
       }
@@ -684,6 +805,15 @@ export function TarefasModule() {
       const projetoNome = task.projetoId ? (projetos.find(p => p.id === task.projetoId)?.nome ?? null) : null
       setTasks(prev => prev.map(t => t.id === task.id ? { ...task, projetoNome } : t))
     }
+
+    // Persist dependencies
+    await supabase.from('tarefa_dependencias').delete().eq('tarefa_id', actualId)
+    if (task.dependencias.length > 0) {
+      await supabase.from('tarefa_dependencias').insert(
+        task.dependencias.map(depId => ({ tarefa_id: actualId, depende_de_id: depId, user_id: userId }))
+      )
+    }
+
     setShowForm(false)
   }
 
@@ -692,9 +822,23 @@ export function TarefasModule() {
     setTasks(prev => prev.filter(t => t.id !== id))
   }
 
-  async function moveTask(id: string, status: OpStatus) {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t))
-    await supabase.from('tarefas').update({ status }).eq('id', id)
+  async function moveTask(id: string, newStatus: OpStatus) {
+    const task = tasks.find(t => t.id === id)
+    if (!task) return
+
+    const currentIdx = STATUS_ORDER.indexOf(task.status)
+    const newIdx     = STATUS_ORDER.indexOf(newStatus)
+
+    if (newIdx > currentIdx) {
+      const blockers = getBlockers(task, tasks)
+      if (blockers.length > 0) {
+        showBlocked(task.title, blockers)
+        return
+      }
+    }
+
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t))
+    await supabase.from('tarefas').update({ status: newStatus }).eq('id', id)
   }
 
   const sel = 'h-8 rounded-lg bg-muted border border-border px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer transition-all'
@@ -702,6 +846,17 @@ export function TarefasModule() {
 
   return (
     <div className="space-y-4 max-w-[1440px]">
+
+      {/* Blocked message banner */}
+      {blockedMsg && (
+        <div className="flex items-center gap-2.5 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3">
+          <Lock size={14} className="text-amber-400 shrink-0" />
+          <p className="text-sm text-amber-400 flex-1">{blockedMsg}</p>
+          <button onClick={() => setBlockedMsg(null)} className="text-amber-400/60 hover:text-amber-400 transition-colors">
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {/* ── Header bar ── */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -784,7 +939,13 @@ export function TarefasModule() {
 
                 <div className="flex flex-col gap-2">
                   {col.map(task => (
-                    <TaskCard key={task.id} task={task} onEdit={openEdit} onDelete={handleDelete} />
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      blockers={getBlockers(task, tasks)}
+                      onEdit={openEdit}
+                      onDelete={handleDelete}
+                    />
                   ))}
                   <button onClick={() => openCreate(status)} className="w-full py-2.5 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all">
                     + Adicionar
@@ -809,13 +970,21 @@ export function TarefasModule() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map(task => {
-                const stCfg  = STATUS_CFG[task.status]
-                const pCfg   = PRIORITY_CFG[task.priority]
+                const stCfg   = STATUS_CFG[task.status]
+                const pCfg    = PRIORITY_CFG[task.priority]
                 const overdue = isOverdue(task.dueDate)
+                const blockers = getBlockers(task, tasks)
                 return (
                   <tr key={task.id} className="hover:bg-muted/20 transition-colors group">
                     <td className="px-5 py-3 max-w-[260px]">
-                      <p className="text-sm text-foreground font-medium truncate">{task.title}</p>
+                      <div className="flex items-center gap-1.5">
+                        {blockers.length > 0 && (
+                          <span title={`Bloqueada por: ${blockers.join(', ')}`}>
+                            <Lock size={11} className="text-amber-400 shrink-0" />
+                          </span>
+                        )}
+                        <p className="text-sm text-foreground font-medium truncate">{task.title}</p>
+                      </div>
                       {task.conversationOrigin && (
                         <span className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
                           <MessageSquare size={9} />{task.conversationOrigin}
@@ -874,7 +1043,7 @@ export function TarefasModule() {
 
       {/* ── Gantt view ── */}
       {view === 'gantt' && (
-        <GanttView tasks={filtered} onEdit={openEdit} />
+        <GanttView tasks={filtered} allTasks={tasks} onEdit={openEdit} />
       )}
 
       {showForm && (
@@ -886,6 +1055,7 @@ export function TarefasModule() {
           clientNames={clientNames}
           memberNames={memberNames}
           projetos={projetos}
+          allTasks={tasks}
         />
       )}
     </div>
