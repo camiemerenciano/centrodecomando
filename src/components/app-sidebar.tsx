@@ -14,7 +14,6 @@ import {
   ChevronDown,
   Bell,
   LogOut,
-  Plug,
   MessagesSquare,
   Building2,
   FolderOpen,
@@ -41,11 +40,10 @@ const navGroups = [
   {
     label: 'Inteligência',
     items: [
-      { href: '/dashboard',          label: 'Dashboard',     icon: LayoutDashboard },
-      { href: '/financeiro',          label: 'Financeiro',   icon: TrendingUp },
-      { href: '/assistente/conexoes', label: 'Conexões',     icon: Plug },
-      { href: '/pipeline',            label: 'Pipeline',     icon: FolderKanban },
-      { href: '/clientes',            label: 'Clientes',     icon: Users },
+      { href: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard },
+      { href: '/financeiro', label: 'Financeiro', icon: TrendingUp },
+      { href: '/pipeline',   label: 'Pipeline',   icon: FolderKanban },
+      { href: '/clientes',   label: 'Clientes',   icon: Users },
     ],
   },
   {

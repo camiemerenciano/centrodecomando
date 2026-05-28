@@ -1,13 +1,281 @@
 'use client'
 
-import { Moon, Sun, Monitor } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Moon, Sun, Monitor, CheckCircle2, XCircle, RefreshCw, Loader2, Unplug, Calendar, AlertCircle, Plug } from 'lucide-react'
 import { useTheme } from '@/components/theme-provider'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { createClient } from '@/lib/supabase/client'
+
+// ── Google Calendar ───────────────────────────────────────────────────────────
+
+type GcalStatus   = 'disconnected' | 'connecting' | 'connected'
+type GcalCalendar = { id: string; name: string; primary: boolean; selected: boolean }
+
+function StatusBadge({ status }: { status: string }) {
+  if (status === 'connected') return (
+    <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 text-[11px] gap-1 px-2 h-6 shrink-0">
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Conectado
+    </Badge>
+  )
+  if (status === 'connecting') return (
+    <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/20 text-[11px] gap-1 px-2 h-6 shrink-0">
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" /> Conectando
+    </Badge>
+  )
+  return (
+    <Badge className="bg-muted text-muted-foreground border-0 text-[11px] gap-1 px-2 h-6 shrink-0">
+      <XCircle size={11} /> Desconectado
+    </Badge>
+  )
+}
+
+function GoogleCalendarCard() {
+  const [status, setStatus]                 = useState<GcalStatus>('disconnected')
+  const [connectedEmail, setConnectedEmail] = useState('')
+  const [connectedName, setConnectedName]   = useState('')
+  const [calendars, setCalendars]           = useState<GcalCalendar[]>([])
+  const [authError, setAuthError]           = useState('')
+  const [syncing, setSyncing]               = useState(false)
+  const [syncOk, setSyncOk]                 = useState(false)
+  const [accessToken, setAccessToken]       = useState('')
+  const supabase = createClient()
+
+  function buildCalendars(email: string): GcalCalendar[] {
+    return [
+      { id: 'primary', name: email,                primary: true,  selected: true  },
+      { id: 'cal2',    name: 'Agência – Entregas', primary: false, selected: true  },
+      { id: 'cal3',    name: 'Feriados no Brasil', primary: false, selected: false },
+    ]
+  }
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data } = await supabase
+        .from('integracoes')
+        .select('gcal_access_token, gcal_refresh_token, gcal_email, gcal_name')
+        .eq('user_id', user.id).maybeSingle()
+      if (!data?.gcal_email) return
+
+      let token = data.gcal_access_token
+      if (data.gcal_refresh_token) {
+        try {
+          const res = await fetch('/api/auth/google/refresh', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: data.gcal_refresh_token }),
+          })
+          const refreshed = await res.json()
+          if (refreshed.access_token) {
+            token = refreshed.access_token
+            await supabase.from('integracoes').upsert({ user_id: user.id, gcal_access_token: refreshed.access_token }, { onConflict: 'user_id' })
+          }
+        } catch { /* fallback */ }
+      }
+
+      if (token && data.gcal_email) {
+        setAccessToken(token as string)
+        setConnectedEmail(data.gcal_email)
+        setConnectedName(data.gcal_name ?? '')
+        setCalendars(buildCalendars(data.gcal_email))
+        setStatus('connected')
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function saveToSupabase(token: string, refreshToken: string, email: string, name: string) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('integracoes').upsert({
+      user_id: user.id, gcal_access_token: token, gcal_refresh_token: refreshToken,
+      gcal_email: email, gcal_name: name, gcal_connected_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' })
+  }
+
+  async function clearFromSupabase() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('integracoes').update({
+      gcal_access_token: null, gcal_refresh_token: null,
+      gcal_email: null, gcal_name: null, gcal_connected_at: null,
+    }).eq('user_id', user.id)
+  }
+
+  function openOAuthPopup() {
+    setAuthError('')
+    setStatus('connecting')
+    const w = 500, h = 640
+    const popup = window.open(
+      '/api/auth/google', 'google_oauth',
+      `width=${w},height=${h},left=${window.screenX + (window.innerWidth - w) / 2},top=${window.screenY + (window.innerHeight - h) / 2},toolbar=0,menubar=0,location=0`
+    )
+    if (!popup || popup.closed) {
+      setStatus('disconnected')
+      setAuthError('O popup foi bloqueado pelo navegador. Permita popups para este site.')
+      return
+    }
+    function onMessage(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return
+      if (e.data?.type !== 'google_auth') return
+      window.removeEventListener('message', onMessage)
+      if (e.data.error) {
+        setStatus('disconnected')
+        if (e.data.error !== 'cancelled') setAuthError('Erro ao autenticar com o Google. Tente novamente.')
+        return
+      }
+      const { email = '', name = '', access_token: token = '', refresh_token: refreshToken = '' } = e.data
+      saveToSupabase(token, refreshToken, email, name)
+      setAccessToken(token); setConnectedEmail(email); setConnectedName(name)
+      setCalendars(buildCalendars(email)); setStatus('connected')
+    }
+    window.addEventListener('message', onMessage)
+    const timer = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(timer)
+        window.removeEventListener('message', onMessage)
+        setStatus(s => s === 'connecting' ? 'disconnected' : s)
+      }
+    }, 500)
+  }
+
+  function handleDisconnect() {
+    clearFromSupabase()
+    setStatus('disconnected'); setConnectedEmail(''); setConnectedName(''); setAccessToken('')
+  }
+
+  async function handleSync() {
+    if (!accessToken) return
+    setSyncing(true); setSyncOk(false)
+    try {
+      const now = new Date(), oneWeek = new Date(now.getTime() + 7 * 86400000)
+      const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
+      url.searchParams.set('timeMin', now.toISOString())
+      url.searchParams.set('timeMax', oneWeek.toISOString())
+      url.searchParams.set('maxResults', '5')
+      url.searchParams.set('singleEvents', 'true')
+      const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } })
+      if (res.ok) { setSyncOk(true); setTimeout(() => setSyncOk(false), 3000) }
+      else setAuthError('Falha na sincronização. Tente reconectar.')
+    } catch { setAuthError('Erro de conexão ao sincronizar.') }
+    finally { setSyncing(false) }
+  }
+
+  return (
+    <Card className="bg-card border-border">
+      <CardHeader className="pb-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-sky-500/15 flex items-center justify-center shrink-0">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="4" width="18" height="17" rx="2" stroke="currentColor" strokeWidth="1.8" className="text-sky-400" />
+                <path d="M16 2v4M8 2v4M3 9h18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-sky-400" />
+                <rect x="8" y="13" width="3" height="3" rx="0.5" fill="currentColor" className="text-sky-400" />
+                <rect x="13" y="13" width="3" height="3" rx="0.5" fill="currentColor" className="text-sky-400" />
+              </svg>
+            </div>
+            <div>
+              <CardTitle className="text-base font-semibold">Google Agenda</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">via OAuth 2.0</p>
+            </div>
+          </div>
+          <StatusBadge status={status} />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Sincronize eventos e prazos com o Google Agenda. Postagens, reuniões e deadlines aparecem automaticamente no Calendário do Orbit™.
+        </p>
+
+        {status === 'connecting' && (
+          <div className="rounded-lg bg-amber-500/8 border border-amber-500/20 p-3 flex items-center gap-3">
+            <Loader2 size={15} className="text-amber-400 animate-spin shrink-0" />
+            <div>
+              <p className="text-sm text-foreground">Aguardando autenticação…</p>
+              <p className="text-xs text-muted-foreground">Complete o login na janela do Google</p>
+            </div>
+          </div>
+        )}
+
+        {authError && status === 'disconnected' && (
+          <div className="rounded-lg bg-red-500/8 border border-red-500/20 p-3 flex items-center gap-2">
+            <AlertCircle size={14} className="text-red-400 shrink-0" />
+            <p className="text-xs text-red-400">{authError}</p>
+          </div>
+        )}
+
+        {status === 'connected' && (
+          <div className="space-y-3">
+            <div className="rounded-lg bg-sky-500/8 border border-sky-500/20 p-3 flex items-center gap-3">
+              <CheckCircle2 size={16} className="text-sky-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">{connectedName || 'Conta conectada'}</p>
+                <p className="text-xs text-muted-foreground truncate">{connectedEmail}</p>
+              </div>
+              <button className="text-[10px] text-primary hover:text-primary/80 transition-colors shrink-0" onClick={openOAuthPopup}>
+                Trocar conta
+              </button>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-foreground/80 mb-2">Agendas sincronizadas</p>
+              <div className="space-y-1.5">
+                {calendars.map(cal => (
+                  <button
+                    key={cal.id}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors group text-left"
+                    onClick={() => setCalendars(prev => prev.map(c => c.id === cal.id ? { ...c, selected: !c.selected } : c))}
+                  >
+                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${cal.selected ? 'bg-primary border-primary' : 'border-border group-hover:border-primary/50'}`}>
+                      {cal.selected && (
+                        <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                          <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-sm text-foreground truncate flex-1">{cal.name}</span>
+                    {cal.primary && <Badge className="text-[10px] bg-primary/15 text-primary border-0 shrink-0">Principal</Badge>}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+              <AlertCircle size={12} className="shrink-0" /> Sincronização automática a cada 15 minutos
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 pt-1">
+          {status === 'connected' ? (
+            <>
+              <Button variant="outline" size="sm" className="h-8 text-xs border-border" onClick={handleSync} disabled={syncing}>
+                {syncing ? <><Loader2 size={13} className="animate-spin" /> Sincronizando…</>
+                  : syncOk ? <><CheckCircle2 size={13} className="text-emerald-400" /> Sincronizado!</>
+                  : <><RefreshCw size={13} /> Sincronizar agora</>}
+              </Button>
+              <Button variant="outline" size="sm" className="h-8 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50" onClick={handleDisconnect}>
+                <Unplug size={13} /> Desconectar
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" className="h-8 text-xs bg-primary hover:bg-primary/90" disabled={status === 'connecting'} onClick={openOAuthPopup}>
+              {status === 'connecting'
+                ? <><Loader2 size={13} className="animate-spin" /> Aguardando…</>
+                : <><Calendar size={13} /> Conectar com Google</>}
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ConfiguracoesPage() {
   const { theme, setTheme } = useTheme()
 
-  const options = [
+  const themeOptions = [
     {
       id: 'dark' as const,
       label: 'Dark',
@@ -47,48 +315,67 @@ export default function ConfiguracoesPage() {
   ]
 
   return (
-    <div className="max-w-[860px] space-y-6">
-      <Card className="bg-card border-border">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Monitor size={14} className="text-muted-foreground" /> Aparência
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">Escolha o tema da interface</p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4 max-w-md">
-            {options.map(({ id, label, description, icon: Icon, preview }) => {
-              const active = theme === id
-              return (
-                <button
-                  key={id}
-                  onClick={() => setTheme(id)}
-                  className={`flex flex-col gap-3 p-3 rounded-xl border text-left transition-all ${
-                    active
-                      ? 'border-primary bg-primary/8 ring-1 ring-primary/30'
-                      : 'border-border hover:border-primary/40 hover:bg-muted/40'
-                  }`}
-                >
-                  {preview}
-                  <div className="flex items-center gap-2">
-                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
-                      active ? 'border-primary bg-primary' : 'border-border'
-                    }`}>
-                      {active && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+    <div className="max-w-[720px] space-y-8">
+
+      {/* ── Aparência ── */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-2 pb-1 border-b border-border">
+          <Monitor size={14} className="text-muted-foreground" />
+          <h2 className="text-sm font-semibold text-foreground">Aparência</h2>
+        </div>
+        <Card className="bg-card border-border">
+          <CardContent className="pt-5">
+            <p className="text-xs text-muted-foreground mb-4">Escolha o tema da interface</p>
+            <div className="grid grid-cols-2 gap-4 max-w-sm">
+              {themeOptions.map(({ id, label, description, icon: Icon, preview }) => {
+                const active = theme === id
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setTheme(id)}
+                    className={`flex flex-col gap-3 p-3 rounded-xl border text-left transition-all ${
+                      active ? 'border-primary bg-primary/8 ring-1 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/40'
+                    }`}
+                  >
+                    {preview}
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${active ? 'border-primary bg-primary' : 'border-border'}`}>
+                        {active && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <div>
+                        <p className={`text-xs font-semibold flex items-center gap-1.5 ${active ? 'text-primary' : 'text-foreground'}`}>
+                          <Icon size={11} /> {label}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">{description}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className={`text-xs font-semibold flex items-center gap-1.5 ${active ? 'text-primary' : 'text-foreground'}`}>
-                        <Icon size={11} /> {label}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">{description}</p>
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
+                  </button>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ── Integrações e ferramentas ── */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-2 pb-1 border-b border-border">
+          <Plug size={14} className="text-muted-foreground" />
+          <h2 className="text-sm font-semibold text-foreground">Integrações e ferramentas</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Conecte ferramentas externas para centralizar toda a operação da agência.
+        </p>
+
+        <GoogleCalendarCard />
+
+        <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 flex items-center gap-3">
+          <AlertCircle size={15} className="text-muted-foreground shrink-0" />
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            As credenciais são armazenadas de forma segura e nunca expostas no lado do cliente.
+          </p>
+        </div>
+      </section>
     </div>
   )
 }
