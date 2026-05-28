@@ -18,10 +18,20 @@ export async function GET() {
 
   const memberIds = links.map(l => l.member_id)
 
-  const { data: perfis } = await admin
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let perfis: any[] | null = null
+  ;({ data: perfis } = await admin
     .from('perfis')
     .select('id, cargo, telefone, endereco, remuneracao, data_entrada, aniversario')
-    .in('id', memberIds)
+    .in('id', memberIds))
+
+  // Fallback: se a coluna telefone ainda não existir, busca sem ela
+  if (!perfis) {
+    ;({ data: perfis } = await admin
+      .from('perfis')
+      .select('id, cargo, endereco, remuneracao, data_entrada, aniversario')
+      .in('id', memberIds))
+  }
 
   const perfilMap = new Map((perfis ?? []).map(p => [p.id, p]))
 

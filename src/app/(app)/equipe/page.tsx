@@ -349,7 +349,8 @@ function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
   onSave: (id: string, fields: Partial<Member>) => Promise<void>
   deleting: boolean
 }) {
-  const [editing, setEditing] = useState(false)
+  const hasData = !!(member.telefone || member.endereco || member.data_entrada || member.aniversario || member.remuneracao)
+  const [editing, setEditing] = useState(!hasData)
   const [saving, setSaving]   = useState(false)
   const [form, setForm]       = useState({
     cargo:        member.cargo        ?? '',
@@ -411,12 +412,17 @@ function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
           </>
         ) : (
           <>
-            <InfoRow icon={<Phone size={13} />}        label="Telefone"         value={member.telefone ?? '—'} />
-            <InfoRow icon={<Mail size={13} />}         label="E-mail"           value={member.email} />
-            <InfoRow icon={<MapPin size={13} />}       label="Endereço"         value={member.endereco ?? '—'} />
-            <InfoRow icon={<CalendarDays size={13} />} label="Início na empresa" value={fmtDate(member.data_entrada)} />
-            <InfoRow icon={<Cake size={13} />}         label="Aniversário"      value={fmtBirthday(member.aniversario)} />
-            <InfoRow icon={<Banknote size={13} />}     label="Remuneração"      value={fmtCurrency(member.remuneracao)} />
+            <InfoRow icon={<Mail size={13} />} label="E-mail" value={member.email} />
+            {member.telefone    && <InfoRow icon={<Phone size={13} />}        label="Telefone"          value={member.telefone} />}
+            {member.endereco    && <InfoRow icon={<MapPin size={13} />}       label="Endereço"          value={member.endereco} />}
+            {member.data_entrada && <InfoRow icon={<CalendarDays size={13} />} label="Início na empresa" value={fmtDate(member.data_entrada)} />}
+            {member.aniversario && <InfoRow icon={<Cake size={13} />}         label="Aniversário"       value={fmtBirthday(member.aniversario)} />}
+            {member.remuneracao != null && <InfoRow icon={<Banknote size={13} />} label="Remuneração"  value={fmtCurrency(member.remuneracao)} />}
+            {!hasData && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Nenhuma informação preenchida ainda. Clique em Editar.
+              </p>
+            )}
           </>
         )}
       </div>
