@@ -21,6 +21,7 @@ import {
   X,
   CheckCheck,
   TrendingUp,
+  Command,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -39,9 +40,10 @@ const navGroups = [
   {
     label: 'Inteligência',
     items: [
-      { href: '/financeiro', label: 'Financeiro', icon: TrendingUp },
-      { href: '/pipeline',   label: 'Pipeline',   icon: FolderKanban },
-      { href: '/clientes',   label: 'Clientes',   icon: Users },
+      { href: '/centro-de-comando', label: 'Centro de Comando', icon: Command },
+      { href: '/financeiro',        label: 'Financeiro',        icon: TrendingUp },
+      { href: '/pipeline',          label: 'Pipeline',          icon: FolderKanban },
+      { href: '/clientes',          label: 'Clientes',          icon: Users },
     ],
   },
   {
