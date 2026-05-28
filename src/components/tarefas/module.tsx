@@ -3,9 +3,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import {
   Plus, LayoutGrid, List, X, Clock, MessageSquare,
-  Circle, PlayCircle, Eye, CheckCircle2, Pencil, Hourglass,
+  Circle, PlayCircle, CheckCircle2, Pencil, Hourglass,
   Trash2, ChevronDown, ChevronLeft, ChevronRight, GanttChart, FolderOpen,
-  Lock, AlertTriangle,
+  Lock, AlertTriangle, Ban, RefreshCw, Archive,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +14,7 @@ import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type OpStatus = 'novo' | 'em_andamento' | 'aguardando_cliente' | 'revisao' | 'concluido'
+type OpStatus = 'nao_iniciado' | 'bloqueado' | 'em_espera' | 'em_andamento' | 'follow_up' | 'concluido' | 'arquivado'
 type Priority = 'low' | 'medium' | 'high' | 'urgent'
 
 interface Projeto { id: string; nome: string; cor: string }
@@ -41,17 +41,19 @@ interface OpTask {
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const STATUS_ORDER: OpStatus[] = [
-  'novo', 'em_andamento', 'aguardando_cliente', 'revisao', 'concluido',
+  'nao_iniciado', 'bloqueado', 'em_espera', 'em_andamento', 'follow_up', 'concluido', 'arquivado',
 ]
 
 const STATUS_CFG: Record<OpStatus, {
   label: string; color: string; bg: string; border: string; icon: React.ReactNode
 }> = {
-  novo:               { label: 'Novo',           color: 'text-slate-400',   bg: 'bg-slate-400/10',   border: 'border-slate-400/20',   icon: <Circle size={11} />       },
-  em_andamento:       { label: 'Em andamento',   color: 'text-sky-400',     bg: 'bg-sky-400/10',     border: 'border-sky-400/20',     icon: <PlayCircle size={11} />   },
-  aguardando_cliente: { label: 'Ag. cliente',    color: 'text-amber-400',   bg: 'bg-amber-400/10',   border: 'border-amber-400/20',   icon: <Hourglass size={11} />    },
-  revisao:            { label: 'Revisão',        color: 'text-orange-400',  bg: 'bg-orange-400/10',  border: 'border-orange-400/20',  icon: <Eye size={11} />          },
-  concluido:          { label: 'Concluído',      color: 'text-emerald-400', bg: 'bg-emerald-400/10', border: 'border-emerald-400/20', icon: <CheckCircle2 size={11} /> },
+  nao_iniciado: { label: 'Não iniciado', color: 'text-slate-400',   bg: 'bg-slate-400/10',   border: 'border-slate-400/20',   icon: <Circle size={11} />        },
+  bloqueado:    { label: 'Bloqueado',    color: 'text-red-400',     bg: 'bg-red-400/10',     border: 'border-red-400/20',     icon: <Ban size={11} />           },
+  em_espera:    { label: 'Em espera',    color: 'text-amber-400',   bg: 'bg-amber-400/10',   border: 'border-amber-400/20',   icon: <Hourglass size={11} />     },
+  em_andamento: { label: 'Em andamento', color: 'text-sky-400',     bg: 'bg-sky-400/10',     border: 'border-sky-400/20',     icon: <PlayCircle size={11} />    },
+  follow_up:    { label: 'Follow-up',    color: 'text-violet-400',  bg: 'bg-violet-400/10',  border: 'border-violet-400/20',  icon: <RefreshCw size={11} />     },
+  concluido:    { label: 'Concluído',    color: 'text-emerald-400', bg: 'bg-emerald-400/10', border: 'border-emerald-400/20', icon: <CheckCircle2 size={11} />  },
+  arquivado:    { label: 'Arquivado',    color: 'text-muted-foreground', bg: 'bg-muted/60',  border: 'border-border',         icon: <Archive size={11} />       },
 }
 
 const PRIORITY_CFG: Record<Priority, { label: string; color: string; dot: string }> = {
@@ -85,7 +87,7 @@ function fromRow(r: any, deps: string[] = []): OpTask {
     assigneeId:         r.assignee_id ?? null,
     dueDate:            r.due_date ?? '',
     priority:           (r.priority ?? 'medium') as Priority,
-    status:             (r.status ?? 'novo') as OpStatus,
+    status:             (r.status ?? 'nao_iniciado') as OpStatus,
     conversationOrigin: r.conversation_origin ?? null,
     createdAt:          r.created_at ?? new Date().toISOString(),
     projetoId:          r.projeto_id ?? null,
@@ -94,10 +96,12 @@ function fromRow(r: any, deps: string[] = []): OpTask {
   }
 }
 
+const DONE_STATUSES: OpStatus[] = ['concluido', 'arquivado']
+
 function getBlockers(task: OpTask, allTasks: OpTask[]): string[] {
   return task.dependencias
     .map(id => allTasks.find(t => t.id === id))
-    .filter((t): t is OpTask => !!t && t.status !== 'concluido')
+    .filter((t): t is OpTask => !!t && !DONE_STATUSES.includes(t.status))
     .map(t => t.title)
 }
 
@@ -260,7 +264,7 @@ function GanttView({ tasks, allTasks, onEdit }: { tasks: OpTask[]; allTasks: OpT
               const visible = endOff >= 0 && startOff < DAYS
 
               const cfg     = STATUS_CFG[task.status]
-              const overdue = !!task.dueDate && isOverdue(task.dueDate) && task.status !== 'concluido'
+              const overdue = !!task.dueDate && isOverdue(task.dueDate) && !DONE_STATUSES.includes(task.status)
               const blocked = getBlockers(task, allTasks).length > 0
 
               return (
@@ -327,7 +331,7 @@ function TaskCard({
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const pCfg    = PRIORITY_CFG[task.priority]
-  const overdue = isOverdue(task.dueDate)
+  const overdue = isOverdue(task.dueDate) && !DONE_STATUSES.includes(task.status)
   const blocked = blockers.length > 0
 
   return (
@@ -445,7 +449,7 @@ function TaskFormPanel({
   const isEdit = !!task?.id
   const [form, setForm] = useState<Partial<OpTask>>({
     title: '', description: '', client: '', assignee: '', assigneeInitials: '',
-    assigneeId: null, dueDate: '', priority: 'medium', status: 'novo',
+    assigneeId: null, dueDate: '', priority: 'medium', status: 'nao_iniciado',
     conversationOrigin: null, projetoId: null, projetoNome: null, dependencias: [],
     ...task,
   })
@@ -481,14 +485,14 @@ function TaskFormPanel({
     // Check if advancing status is blocked by unmet dependencies
     const deps = form.dependencias ?? []
     if (deps.length > 0) {
-      const originalStatus = task?.status ?? 'novo'
-      const newStatus      = form.status ?? 'novo'
+      const originalStatus = task?.status ?? 'nao_iniciado'
+      const newStatus      = form.status ?? 'nao_iniciado'
       const originalIdx    = STATUS_ORDER.indexOf(originalStatus)
       const newIdx         = STATUS_ORDER.indexOf(newStatus)
       if (newIdx > originalIdx) {
         const blockers = deps
           .map(id => allTasks.find(t => t.id === id))
-          .filter((t): t is OpTask => !!t && t.status !== 'concluido')
+          .filter((t): t is OpTask => !!t && !DONE_STATUSES.includes(t.status))
           .map(t => t.title)
         if (blockers.length > 0) {
           setFormError(`Tarefa bloqueada. Conclua primeiro: ${blockers.join(', ')}`)
@@ -624,7 +628,7 @@ function TaskFormPanel({
               <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-muted/50 divide-y divide-border/50">
                 {otherTasks.map(t => {
                   const checked = (form.dependencias ?? []).includes(t.id)
-                  const done    = t.status === 'concluido'
+                  const done    = DONE_STATUSES.includes(t.status)
                   return (
                     <label
                       key={t.id}
@@ -643,6 +647,7 @@ function TaskFormPanel({
                         ? <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
                         : <Circle size={11} className="text-muted-foreground/40 shrink-0" />
                       }
+
                     </label>
                   )
                 })}
@@ -787,7 +792,7 @@ export function TarefasModule() {
   }
 
   function openCreate(status?: OpStatus) {
-    setEditTask(status ? { status, dependencias: [] } : { status: 'novo', dependencias: [] })
+    setEditTask(status ? { status, dependencias: [] } : { status: 'nao_iniciado', dependencias: [] })
     setShowForm(true)
   }
 
@@ -931,7 +936,8 @@ export function TarefasModule() {
 
       {/* ── Kanban view ── */}
       {view === 'kanban' && (
-        <div className="grid grid-cols-5 gap-3 min-h-[60vh]">
+        <div className="overflow-x-auto pb-2 -mx-1 px-1">
+        <div className="flex gap-3 min-h-[60vh]" style={{ minWidth: 'max-content' }}>
           {STATUS_ORDER.map(status => {
             const col = filtered.filter(t => t.status === status)
             const cfg = STATUS_CFG[status]
@@ -939,7 +945,8 @@ export function TarefasModule() {
             return (
               <div
                 key={status}
-                className={`flex flex-col gap-2 rounded-xl p-1 -m-1 transition-colors ${isOver ? 'bg-primary/8 ring-1 ring-primary/25' : ''}`}
+                style={{ width: 232 }}
+                className={`shrink-0 flex flex-col gap-2 rounded-xl p-1 -m-1 transition-colors ${isOver ? 'bg-primary/8 ring-1 ring-primary/25' : ''}`}
                 onDragOver={e => { e.preventDefault(); setDragOver(status) }}
                 onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null) }}
                 onDrop={e => {
@@ -978,6 +985,7 @@ export function TarefasModule() {
             )
           })}
         </div>
+        </div>
       )}
 
       {/* ── List view ── */}
@@ -995,7 +1003,7 @@ export function TarefasModule() {
               {filtered.map(task => {
                 const stCfg   = STATUS_CFG[task.status]
                 const pCfg    = PRIORITY_CFG[task.priority]
-                const overdue = isOverdue(task.dueDate)
+                const overdue = isOverdue(task.dueDate) && !DONE_STATUSES.includes(task.status)
                 const blockers = getBlockers(task, tasks)
                 return (
                   <tr key={task.id} className="hover:bg-muted/20 transition-colors group">
