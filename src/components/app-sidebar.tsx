@@ -22,6 +22,7 @@ import {
   CheckCheck,
   TrendingUp,
   Command,
+  Files,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -69,8 +70,9 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Gestão',
     items: [
-      { href: '/financeiro', label: 'Financeiro', icon: TrendingUp },
-      { href: '/equipe',     label: 'Equipe',     icon: UsersRound },
+      { href: '/financeiro',  label: 'Financeiro',  icon: TrendingUp },
+      { href: '/equipe',      label: 'Equipe',      icon: UsersRound },
+      { href: '/documentos',  label: 'Documentos',  icon: Files },
     ],
   },
   {
