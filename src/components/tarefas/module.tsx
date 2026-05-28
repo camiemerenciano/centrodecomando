@@ -18,6 +18,7 @@ type OpStatus = 'novo' | 'em_andamento' | 'aguardando_cliente' | 'revisao' | 'co
 type Priority = 'low' | 'medium' | 'high' | 'urgent'
 
 interface Projeto { id: string; nome: string; cor: string }
+interface Member  { id: string; nome: string }
 
 interface OpTask {
   id: string
@@ -26,6 +27,7 @@ interface OpTask {
   client: string
   assignee: string
   assigneeInitials: string
+  assigneeId: string | null
   dueDate: string
   priority: Priority
   status: OpStatus
@@ -80,6 +82,7 @@ function fromRow(r: any, deps: string[] = []): OpTask {
     client:             r.client ?? '',
     assignee:           r.assignee ?? '',
     assigneeInitials:   r.assignee_initials ?? '',
+    assigneeId:         r.assignee_id ?? null,
     dueDate:            r.due_date ?? '',
     priority:           (r.priority ?? 'medium') as Priority,
     status:             (r.status ?? 'novo') as OpStatus,
@@ -428,22 +431,22 @@ function TaskCard({
 // ─── TaskFormPanel ────────────────────────────────────────────────────────────
 
 function TaskFormPanel({
-  task, onSave, onClose, onDelete, clientNames, memberNames, projetos, allTasks,
+  task, onSave, onClose, onDelete, clientNames, members, projetos, allTasks,
 }: {
   task: Partial<OpTask> | null
   onSave: (t: OpTask) => void
   onClose: () => void
   onDelete?: (id: string) => void
   clientNames: string[]
-  memberNames: string[]
+  members: Member[]
   projetos: Projeto[]
   allTasks: OpTask[]
 }) {
   const isEdit = !!task?.id
   const [form, setForm] = useState<Partial<OpTask>>({
     title: '', description: '', client: '', assignee: '', assigneeInitials: '',
-    dueDate: '', priority: 'medium', status: 'novo', conversationOrigin: null,
-    projetoId: null, projetoNome: null, dependencias: [],
+    assigneeId: null, dueDate: '', priority: 'medium', status: 'novo',
+    conversationOrigin: null, projetoId: null, projetoNome: null, dependencias: [],
     ...task,
   })
   const [formError, setFormError] = useState<string | null>(null)
@@ -452,13 +455,14 @@ function TaskFormPanel({
 
   function field<K extends keyof OpTask>(key: K) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      if (key === 'assignee') {
-        const initials = e.target.value.split(' ').slice(0, 2).map(n => n[0] ?? '').join('').toUpperCase()
-        setForm(p => ({ ...p, assignee: e.target.value, assigneeInitials: initials }))
-      } else {
-        setForm(p => ({ ...p, [key]: e.target.value }))
-      }
+      setForm(p => ({ ...p, [key]: e.target.value }))
     }
+  }
+
+  function pickAssignee(memberId: string) {
+    const member = members.find(m => m.id === memberId)
+    const initials = member?.nome.split(' ').slice(0,2).map(n => n[0] ?? '').join('').toUpperCase() ?? ''
+    setForm(p => ({ ...p, assigneeId: memberId || null, assignee: member?.nome ?? '', assigneeInitials: initials }))
   }
 
   function toggleDep(depId: string, checked: boolean) {
@@ -500,6 +504,7 @@ function TaskFormPanel({
       client:             form.client ?? '',
       assignee:           form.assignee ?? '',
       assigneeInitials:   form.assigneeInitials ?? '',
+      assigneeId:         form.assigneeId ?? null,
       dueDate:            form.dueDate ?? '',
       priority:           form.priority!,
       status:             form.status!,
@@ -551,9 +556,9 @@ function TaskFormPanel({
             <div>
               <label className={lbl}>Responsável</label>
               <div className="relative">
-                <select value={form.assignee ?? ''} onChange={field('assignee')} className={inp + ' cursor-pointer appearance-none pr-7'}>
+                <select value={form.assigneeId ?? ''} onChange={e => pickAssignee(e.target.value)} className={inp + ' cursor-pointer appearance-none pr-7'}>
                   <option value="">— Sem responsável —</option>
-                  {memberNames.map(n => <option key={n} value={n}>{n}</option>)}
+                  {members.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
                 </select>
                 <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
               </div>
@@ -694,11 +699,11 @@ export function TarefasModule() {
   const [filterProjeto, setFilterProjeto] = useState('')
   const [showForm, setShowForm]         = useState(false)
   const [editTask, setEditTask]         = useState<Partial<OpTask> | null>(null)
-  const [userId, setUserId]             = useState<string | null>(null)
-  const [clientNames, setClientNames]   = useState<string[]>([])
-  const [memberNames, setMemberNames]   = useState<string[]>([])
-  const [projetos, setProjetos]         = useState<Projeto[]>([])
-  const [blockedMsg, setBlockedMsg]     = useState<string | null>(null)
+  const [userId, setUserId]         = useState<string | null>(null)
+  const [clientNames, setClientNames] = useState<string[]>([])
+  const [members, setMembers]         = useState<Member[]>([])
+  const [projetos, setProjetos]       = useState<Projeto[]>([])
+  const [blockedMsg, setBlockedMsg]   = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -707,18 +712,38 @@ export function TarefasModule() {
       if (!user) return
       setUserId(user.id)
 
-      const [projRes, { data: tarefasData }, { data: clientesData }, { data: depsData }] = await Promise.all([
+      const [projRes, wsRes, { data: clientesData }] = await Promise.all([
         fetch('/api/projetos').then(r => r.ok ? r.json() : []),
-        supabase.from('tarefas').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
+        fetch('/api/team/workspace').then(r => r.ok ? r.json() : { ownerId: user.id, members: [] }),
         supabase.from('clientes').select('name').eq('user_id', user.id).order('name'),
-        supabase.from('tarefa_dependencias').select('tarefa_id, depende_de_id').eq('user_id', user.id),
+      ])
+
+      // Build members list: self + workspace teammates
+      const ws: { ownerId: string; members: { id: string; nome: string }[] } = wsRes
+      const selfName = (user.user_metadata?.full_name as string | undefined) ?? user.email?.split('@')[0] ?? 'Eu'
+      const allMembers: Member[] = [
+        { id: user.id, nome: selfName },
+        ...ws.members.filter((m: Member) => m.id !== user.id),
+      ]
+      setMembers(allMembers)
+
+      // Load tasks visible to this user: tasks they created OR are assigned to
+      const [{ data: tarefasData }, { data: depsData }] = await Promise.all([
+        supabase
+          .from('tarefas')
+          .select('*')
+          .or(`user_id.eq.${user.id},assignee_id.eq.${user.id}`)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('tarefa_dependencias')
+          .select('tarefa_id, depende_de_id')
+          .or(`tarefa_id.in.(select id from tarefas where user_id='${user.id}' or assignee_id='${user.id}')`),
       ])
 
       const projetosData: Projeto[] = Array.isArray(projRes) ? projRes : []
       setProjetos(projetosData)
       const projMap = new Map<string, string>(projetosData.map(p => [p.id, p.nome]))
 
-      // Build dependency map: tarefa_id → [depende_de_id]
       const depMap = new Map<string, string[]>()
       for (const dep of depsData ?? []) {
         const arr = depMap.get(dep.tarefa_id) ?? []
@@ -732,9 +757,6 @@ export function TarefasModule() {
         return t
       }))
       if (clientesData) setClientNames(clientesData.map((c: { name: string }) => c.name).filter(Boolean))
-
-      const fullName = user.user_metadata?.full_name as string | undefined
-      if (fullName) setMemberNames([fullName])
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -783,6 +805,7 @@ export function TarefasModule() {
       client:             task.client,
       assignee:           task.assignee,
       assignee_initials:  task.assigneeInitials,
+      assignee_id:        task.assigneeId || null,
       due_date:           task.dueDate,
       priority:           task.priority,
       status:             task.status,
@@ -1053,7 +1076,7 @@ export function TarefasModule() {
           onClose={() => setShowForm(false)}
           onDelete={id => { handleDelete(id); setShowForm(false) }}
           clientNames={clientNames}
-          memberNames={memberNames}
+          members={members}
           projetos={projetos}
           allTasks={tasks}
         />
