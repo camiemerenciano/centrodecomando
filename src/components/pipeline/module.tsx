@@ -19,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   Plus, X, Clock, Pencil, Trash2, GripVertical,
   Inbox, Search, CalendarClock, CalendarCheck2,
-  FileText, FileCheck2, RefreshCw, XCircle, Phone, DollarSign, FolderOpen,
+  FileText, FileCheck2, RefreshCw, XCircle, Phone, DollarSign, FolderOpen, BadgeCheck,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -27,7 +27,7 @@ import { Button } from '@/components/ui/button'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Stage    = 'recepcao' | 'viabilidade' | 'ag_agendamento' | 'agendado' | 'contrato_enviado' | 'contrato_assinado' | 'followup' | 'perdido'
+type Stage    = 'recepcao' | 'viabilidade' | 'ag_agendamento' | 'agendado' | 'contrato_enviado' | 'contrato_assinado' | 'fechado' | 'followup' | 'perdido'
 type Priority = 'low' | 'medium' | 'high' | 'urgent'
 
 interface Projeto { id: string; nome: string; cor: string }
@@ -57,9 +57,10 @@ const STAGES: {
   { id: 'ag_agendamento',    label: 'Aguard. Agendamento',    icon: <CalendarClock size={13} />,  color: 'text-amber-400',   bg: 'bg-amber-400/8',   border: 'border-amber-400/20'   },
   { id: 'agendado',          label: 'Agendamento Feito',      icon: <CalendarCheck2 size={13} />, color: 'text-sky-400',     bg: 'bg-sky-400/8',     border: 'border-sky-400/20'     },
   { id: 'contrato_enviado',  label: 'Contrato Enviado',       icon: <FileText size={13} />,       color: 'text-orange-400',  bg: 'bg-orange-400/8',  border: 'border-orange-400/20'  },
-  { id: 'contrato_assinado', label: 'Contrato Assinado',      icon: <FileCheck2 size={13} />,     color: 'text-emerald-400', bg: 'bg-emerald-400/8', border: 'border-emerald-400/20' },
-  { id: 'followup',          label: 'Follow-up',              icon: <RefreshCw size={13} />,      color: 'text-violet-400',  bg: 'bg-violet-400/8',  border: 'border-violet-400/20'  },
-  { id: 'perdido',           label: 'Leads Perdidos',         icon: <XCircle size={13} />,        color: 'text-red-400',     bg: 'bg-red-400/8',     border: 'border-red-400/20'     },
+  { id: 'contrato_assinado', label: 'Contrato Assinado',      icon: <FileCheck2 size={13} />,    color: 'text-emerald-400', bg: 'bg-emerald-400/8',  border: 'border-emerald-400/20'  },
+  { id: 'fechado',           label: 'Fechado',                icon: <BadgeCheck size={13} />,    color: 'text-green-400',   bg: 'bg-green-400/8',    border: 'border-green-400/20'    },
+  { id: 'followup',          label: 'Follow-up',              icon: <RefreshCw size={13} />,     color: 'text-violet-400',  bg: 'bg-violet-400/8',   border: 'border-violet-400/20'   },
+  { id: 'perdido',           label: 'Leads Perdidos',         icon: <XCircle size={13} />,       color: 'text-red-400',     bg: 'bg-red-400/8',      border: 'border-red-400/20'      },
 ]
 
 const PRIORITY_CFG: Record<Priority, { label: string; color: string; dot: string }> = {

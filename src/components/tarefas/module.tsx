@@ -2,10 +2,10 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import {
-  Plus, LayoutGrid, List, X, Clock, MessageSquare,
+  Plus, LayoutGrid, List, X, Clock,
   Circle, PlayCircle, CheckCircle2, Pencil, Hourglass,
   Trash2, ChevronDown, ChevronLeft, ChevronRight, GanttChart, FolderOpen,
-  Lock, AlertTriangle, Ban, RefreshCw, Archive,
+  Lock, AlertTriangle, RefreshCw, Archive,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +14,7 @@ import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type OpStatus = 'nao_iniciado' | 'bloqueado' | 'em_espera' | 'em_andamento' | 'follow_up' | 'concluido' | 'arquivado'
+type OpStatus = 'nao_iniciado' | 'em_espera' | 'em_andamento' | 'follow_up' | 'concluido' | 'arquivado'
 type Priority = 'low' | 'medium' | 'high' | 'urgent'
 
 interface Projeto { id: string; nome: string; cor: string }
@@ -41,14 +41,13 @@ interface OpTask {
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const STATUS_ORDER: OpStatus[] = [
-  'nao_iniciado', 'bloqueado', 'em_espera', 'em_andamento', 'follow_up', 'concluido', 'arquivado',
+  'nao_iniciado', 'em_espera', 'em_andamento', 'follow_up', 'concluido', 'arquivado',
 ]
 
 const STATUS_CFG: Record<OpStatus, {
   label: string; color: string; bg: string; border: string; icon: React.ReactNode
 }> = {
   nao_iniciado: { label: 'Não iniciado', color: 'text-slate-400',   bg: 'bg-slate-400/10',   border: 'border-slate-400/20',   icon: <Circle size={11} />        },
-  bloqueado:    { label: 'Bloqueado',    color: 'text-red-400',     bg: 'bg-red-400/10',     border: 'border-red-400/20',     icon: <Ban size={11} />           },
   em_espera:    { label: 'Em espera',    color: 'text-amber-400',   bg: 'bg-amber-400/10',   border: 'border-amber-400/20',   icon: <Hourglass size={11} />     },
   em_andamento: { label: 'Em andamento', color: 'text-sky-400',     bg: 'bg-sky-400/10',     border: 'border-sky-400/20',     icon: <PlayCircle size={11} />    },
   follow_up:    { label: 'Follow-up',    color: 'text-violet-400',  bg: 'bg-violet-400/10',  border: 'border-violet-400/20',  icon: <RefreshCw size={11} />     },
@@ -383,12 +382,6 @@ function TaskCard({
         </div>
       )}
 
-      {task.conversationOrigin && (
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
-          <MessageSquare size={9} />
-          <span className="truncate">{task.conversationOrigin}</span>
-        </div>
-      )}
 
       <div className="flex items-center justify-between gap-2 pt-0.5">
         <Badge className={`${pCfg.color} border-0 text-[10px] px-1.5 h-5 gap-1 shrink-0`}>
@@ -658,11 +651,6 @@ function TaskFormPanel({
             </p>
           </div>
 
-          <div>
-            <label className={lbl}>Origem da conversa</label>
-            <input value={form.conversationOrigin ?? ''} onChange={e => setForm(p => ({ ...p, conversationOrigin: e.target.value || null }))} placeholder="Ex: Ana Beatriz – Loja Bloom" className={inp} />
-            <p className="text-[10px] text-muted-foreground mt-1">Deixe em branco se a tarefa não veio de uma conversa.</p>
-          </div>
         </div>
 
         {formError && (
@@ -1016,11 +1004,6 @@ export function TarefasModule() {
                         )}
                         <p className="text-sm text-foreground font-medium truncate">{task.title}</p>
                       </div>
-                      {task.conversationOrigin && (
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
-                          <MessageSquare size={9} />{task.conversationOrigin}
-                        </span>
-                      )}
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{task.client}</td>
                     <td className="px-4 py-3">
