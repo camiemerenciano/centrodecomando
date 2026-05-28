@@ -22,6 +22,7 @@ import {
   MessageSquareDot,
   X,
   CheckCheck,
+  TrendingUp,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -41,6 +42,7 @@ const navGroups = [
     label: 'Inteligência',
     items: [
       { href: '/dashboard',          label: 'Dashboard',     icon: LayoutDashboard },
+      { href: '/financeiro',          label: 'Financeiro',   icon: TrendingUp },
       { href: '/assistente/conexoes', label: 'Conexões',     icon: Plug },
       { href: '/pipeline',            label: 'Pipeline',     icon: FolderKanban },
       { href: '/clientes',            label: 'Clientes',     icon: Users },
