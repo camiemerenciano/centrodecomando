@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
@@ -14,7 +15,6 @@ import {
   Bell,
   LogOut,
   MessagesSquare,
-  Building2,
   FolderOpen,
   ShieldCheck,
   MessageSquareDot,
@@ -36,14 +36,28 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-const navGroups = [
+type NavItem = { href: string; label: string; icon: React.ElementType; badge?: string; roleRequired?: string }
+
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
-    label: 'Inteligência',
+    label: 'Visão',
     items: [
       { href: '/centro-de-comando', label: 'Centro de Comando', icon: Command },
-      { href: '/financeiro',        label: 'Financeiro',        icon: TrendingUp },
-      { href: '/pipeline',          label: 'Pipeline',          icon: FolderKanban },
-      { href: '/clientes',          label: 'Clientes',          icon: Users },
+    ],
+  },
+  {
+    label: 'Comercial',
+    items: [
+      { href: '/pipeline', label: 'Pipeline', icon: FolderKanban },
+      { href: '/clientes', label: 'Clientes', icon: Users },
+    ],
+  },
+  {
+    label: 'Operação',
+    items: [
+      { href: '/projetos',   label: 'Projetos',   icon: FolderOpen },
+      { href: '/tarefas',    label: 'Tarefas',    icon: CheckSquare },
+      { href: '/calendario', label: 'Calendário', icon: Calendar },
     ],
   },
   {
@@ -53,12 +67,17 @@ const navGroups = [
     ],
   },
   {
-    label: 'Operação',
+    label: 'Gestão',
     items: [
-      { href: '/projetos',   label: 'Projetos',   icon: FolderOpen },
-      { href: '/tarefas',    label: 'Tarefas',    icon: CheckSquare },
-      { href: '/calendario', label: 'Calendário', icon: Calendar },
+      { href: '/financeiro', label: 'Financeiro', icon: TrendingUp },
       { href: '/equipe',     label: 'Equipe',     icon: UsersRound },
+    ],
+  },
+  {
+    label: 'Administração',
+    items: [
+      { href: '/membros',       label: 'Membros',        icon: Users,    roleRequired: 'superadmin' },
+      { href: '/configuracoes', label: 'Configurações',  icon: Settings },
     ],
   },
 ]
@@ -200,88 +219,57 @@ export function AppSidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-4">
-          {navGroups.map(group => (
-            <div key={group.label}>
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-2 pb-1.5 font-medium">
-                {group.label}
-              </p>
-              <div className="space-y-0.5">
-                {group.items.map(({ href, label, icon: Icon, ...rest }) => {
-                  const badge  = (rest as { badge?: string }).badge
-                  const active = pathname === href || pathname.startsWith(href + '/')
-                  const isChat = href === '/chat'
-                  return (
-                    <Link
-                      key={href}
-                      href={href}
-                      className={`
-                        flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group
-                        ${active
-                          ? 'bg-primary/15 text-primary border border-primary/20'
-                          : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent'
-                        }
-                      `}
-                    >
-                      <Icon
-                        size={16}
-                        className={active ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-foreground transition-colors'}
-                      />
-                      <span className="flex-1 truncate">{label}</span>
-                      {isChat && unreadCount > 0 && !active && (
-                        <span className="w-2 h-2 rounded-full bg-primary shrink-0 animate-pulse" />
-                      )}
-                      {badge && (
-                        <Badge
-                          className={`text-[10px] px-1.5 py-0 h-4 font-semibold shrink-0 ${
-                            active
-                              ? 'bg-primary/25 text-primary border-0'
-                              : 'bg-muted text-muted-foreground border-0'
-                          }`}
-                        >
-                          {badge}
-                        </Badge>
-                      )}
-                    </Link>
-                  )
-                })}
+          {NAV_GROUPS.map(group => {
+            const visibleItems = group.items.filter(item => !item.roleRequired || item.roleRequired === role)
+            if (visibleItems.length === 0) return null
+            return (
+              <div key={group.label}>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-2 pb-1.5 font-medium">
+                  {group.label}
+                </p>
+                <div className="space-y-0.5">
+                  {visibleItems.map(({ href, label, icon: Icon, badge }) => {
+                    const active = pathname === href || pathname.startsWith(href + '/')
+                    const isChat = href === '/chat'
+                    return (
+                      <Link
+                        key={href}
+                        href={href}
+                        className={`
+                          flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group
+                          ${active
+                            ? 'bg-primary/15 text-primary border border-primary/20'
+                            : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent'
+                          }
+                        `}
+                      >
+                        <Icon
+                          size={16}
+                          className={active ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-foreground transition-colors'}
+                        />
+                        <span className="flex-1 truncate">{label}</span>
+                        {isChat && unreadCount > 0 && !active && (
+                          <span className="w-2 h-2 rounded-full bg-primary shrink-0 animate-pulse" />
+                        )}
+                        {badge && (
+                          <Badge
+                            className={`text-[10px] px-1.5 py-0 h-4 font-semibold shrink-0 ${
+                              active
+                                ? 'bg-primary/25 text-primary border-0'
+                                : 'bg-muted text-muted-foreground border-0'
+                            }`}
+                          >
+                            {badge}
+                          </Badge>
+                        )}
+                      </Link>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </nav>
-
-        {/* Superadmin */}
-        {role === 'superadmin' && (
-          <div className="px-3 pb-2">
-            <div className="flex items-center gap-1.5 px-2 pb-1.5">
-              <ShieldCheck size={11} className="text-amber-400 shrink-0" />
-              <p className="text-[10px] uppercase tracking-widest text-amber-400/80 font-semibold">
-                Administrador
-              </p>
-            </div>
-            <div className="space-y-0.5">
-              {[
-                { href: '/agencias', label: 'Agências', icon: Building2 },
-                { href: '/membros',  label: 'Membros',  icon: Users },
-              ].map(({ href, label, icon: Icon }) => {
-                const active = pathname === href || pathname.startsWith(href + '/')
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group ${
-                      active
-                        ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
-                        : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent'
-                    }`}
-                  >
-                    <Icon size={16} className={active ? 'text-amber-400' : 'text-muted-foreground group-hover:text-sidebar-foreground transition-colors'} />
-                    <span className="flex-1 truncate">{label}</span>
-                  </Link>
-                )
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Bottom actions */}
         <div className="px-3 pb-3 space-y-0.5 border-t border-sidebar-border pt-3">
@@ -368,13 +356,6 @@ export function AppSidebar() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Link
-            href="/configuracoes"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-all group"
-          >
-            <Settings size={16} className="text-muted-foreground group-hover:text-sidebar-foreground transition-colors" />
-            <span>Configurações</span>
-          </Link>
         </div>
 
         {/* User */}
