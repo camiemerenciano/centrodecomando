@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import {
-  LayoutDashboard,
   CheckSquare,
   FolderKanban,
   Calendar,
@@ -40,7 +39,6 @@ const navGroups = [
   {
     label: 'Inteligência',
     items: [
-      { href: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard },
       { href: '/financeiro', label: 'Financeiro', icon: TrendingUp },
       { href: '/pipeline',   label: 'Pipeline',   icon: FolderKanban },
       { href: '/clientes',   label: 'Clientes',   icon: Users },
