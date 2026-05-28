@@ -22,24 +22,24 @@ type HealthData = {
   color: string
   bg: string
   atrasadas: number
-  concluidasRecente: number
-  totalAtivas: number
+  concluidas: number
+  emAndamento: number
 }
 
 // ─── Health calculation ───────────────────────────────────────────────────────
 
-function calcHealth(atrasadas: number, concluidasRecente: number, totalAtivas: number): HealthData {
-  const totalTasks   = totalAtivas + concluidasRecente
-  const onTimeRatio  = totalTasks > 0 ? concluidasRecente / totalTasks : 0
-  const overdueRatio = totalAtivas > 0 ? atrasadas / totalAtivas : 0
-  const score        = Math.round((onTimeRatio * 50) + ((1 - overdueRatio) * 50))
+function calcHealth(atrasadas: number, concluidas: number, emAndamento: number): HealthData {
+  const total        = atrasadas + concluidas + emAndamento
+  const completionR  = total > 0 ? concluidas   / total : 0
+  const overdueR     = total > 0 ? atrasadas    / total : 0
+  const score        = Math.round((completionR * 50) + ((1 - overdueR) * 50))
   const clamped      = Math.max(0, Math.min(100, score))
 
-  if (clamped >= 85) return { score: clamped, label: 'Excelente', color: 'text-emerald-400', bg: 'bg-emerald-500/10', atrasadas, concluidasRecente, totalAtivas }
-  if (clamped >= 70) return { score: clamped, label: 'Bom',       color: 'text-sky-400',     bg: 'bg-sky-500/10',     atrasadas, concluidasRecente, totalAtivas }
-  if (clamped >= 50) return { score: clamped, label: 'Regular',   color: 'text-amber-400',   bg: 'bg-amber-500/10',   atrasadas, concluidasRecente, totalAtivas }
-  if (clamped >= 30) return { score: clamped, label: 'Atenção',   color: 'text-orange-400',  bg: 'bg-orange-500/10',  atrasadas, concluidasRecente, totalAtivas }
-  return              { score: clamped, label: 'Crítico',  color: 'text-red-400',     bg: 'bg-red-500/10',     atrasadas, concluidasRecente, totalAtivas }
+  if (clamped >= 85) return { score: clamped, label: 'Excelente', color: 'text-emerald-400', bg: 'bg-emerald-500/10', atrasadas, concluidas, emAndamento }
+  if (clamped >= 70) return { score: clamped, label: 'Bom',       color: 'text-sky-400',     bg: 'bg-sky-500/10',     atrasadas, concluidas, emAndamento }
+  if (clamped >= 50) return { score: clamped, label: 'Regular',   color: 'text-amber-400',   bg: 'bg-amber-500/10',   atrasadas, concluidas, emAndamento }
+  if (clamped >= 30) return { score: clamped, label: 'Atenção',   color: 'text-orange-400',  bg: 'bg-orange-500/10',  atrasadas, concluidas, emAndamento }
+  return              { score: clamped, label: 'Crítico',  color: 'text-red-400',     bg: 'bg-red-500/10',     atrasadas, concluidas, emAndamento }
 }
 
 // ─── Module ───────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ export function CentroDeComandoModule() {
   async function loadTarefas(userId: string, todayStr: string, today: Date) {
     const thirtyDaysAgo = new Date(today.getTime() - 30 * 86400000).toISOString()
 
-    const [{ data: tarefasData }, projRes, { data: concluidasData }, { data: ativasData }] = await Promise.all([
+    const [{ data: tarefasData }, projRes, { count: concluidasCount }, { count: emAndamentoCount }] = await Promise.all([
       // Atrasadas
       supabase
         .from('tarefas')
@@ -96,17 +96,17 @@ export function CentroDeComandoModule() {
       // Concluídas nos últimos 30 dias
       supabase
         .from('tarefas')
-        .select('id', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true })
         .or(`user_id.eq.${userId},assignee_id.eq.${userId}`)
         .eq('status', 'concluido')
         .gte('created_at', thirtyDaysAgo),
 
-      // Total ativas (não concluídas, não arquivadas)
+      // Em andamento
       supabase
         .from('tarefas')
-        .select('id', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true })
         .or(`user_id.eq.${userId},assignee_id.eq.${userId}`)
-        .not('status', 'in', '("concluido","arquivado")'),
+        .eq('status', 'em_andamento'),
     ])
 
     const projetos: { id: string; nome: string }[] = projRes.ok ? await projRes.json() : []
@@ -120,10 +120,7 @@ export function CentroDeComandoModule() {
     })
 
     setAtrasadas(atrasadasList)
-
-    const concluidasRecente = concluidasData?.length ?? 0
-    const totalAtivas       = ativasData?.length ?? 0
-    setHealth(calcHealth(atrasadasList.length, concluidasRecente, totalAtivas))
+    setHealth(calcHealth(atrasadasList.length, concluidasCount ?? 0, emAndamentoCount ?? 0))
   }
 
   // ── Projetos ativos ────────────────────────────────────────────────────────
@@ -179,7 +176,7 @@ export function CentroDeComandoModule() {
         body: JSON.stringify({
           tarefasAtrasadas: atrasadas.map(t => ({ titulo: t.title, diasAtraso: t.diasAtraso, projeto: t.projetoNome })),
           reunioes:         reunioes.map(r => ({ titulo: r.titulo, inicio: r.inicio })),
-          saudeOperacional: health ? { score: health.score, label: health.label, atrasadas: health.atrasadas, concluidasRecente: health.concluidasRecente } : null,
+          saudeOperacional: health ? { score: health.score, label: health.label, atrasadas: health.atrasadas, concluidas: health.concluidas, emAndamento: health.emAndamento } : null,
           projetosAtivos,
         }),
       })
@@ -302,21 +299,21 @@ export function CentroDeComandoModule() {
             </div>
             {/* Breakdown */}
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="bg-muted/30 rounded-lg px-3 py-2.5">
+              <div className="bg-red-500/5 border border-red-500/10 rounded-lg px-3 py-2.5">
                 <p className="text-lg font-bold text-red-400 tabular-nums">{health.atrasadas}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">Atrasadas</p>
               </div>
-              <div className="bg-muted/30 rounded-lg px-3 py-2.5">
-                <p className="text-lg font-bold text-emerald-400 tabular-nums">{health.concluidasRecente}</p>
+              <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2.5">
+                <p className="text-lg font-bold text-emerald-400 tabular-nums">{health.concluidas}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">Concluídas (30d)</p>
               </div>
-              <div className="bg-muted/30 rounded-lg px-3 py-2.5">
-                <p className="text-lg font-bold text-foreground tabular-nums">{health.totalAtivas}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Em aberto</p>
+              <div className="bg-sky-500/5 border border-sky-500/10 rounded-lg px-3 py-2.5">
+                <p className="text-lg font-bold text-sky-400 tabular-nums">{health.emAndamento}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Em Andamento</p>
               </div>
             </div>
             <p className="text-[10px] text-muted-foreground mt-3">
-              Índice calculado com base na proporção de tarefas atrasadas e entregas concluídas nos últimos 30 dias.
+              Índice calculado com base na proporção de tarefas atrasadas, concluídas e em andamento.
             </p>
           </CardContent>
         </Card>
