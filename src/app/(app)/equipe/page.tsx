@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { createClient } from '@/lib/supabase/client'
+import { useEmpresa } from '@/contexts/empresa-context'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -265,7 +266,8 @@ function AddManualModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
 function AddOrgModal({ onClose, onAdded, members, orgPeople }: {
   onClose: () => void; onAdded: () => void; members: Member[]; orgPeople: OrgPerson[]
 }) {
-  const supabase = createClient()
+  const supabase      = createClient()
+  const { empresaId } = useEmpresa()
   const [nome, setNome]         = useState('')
   const [parentId, setParentId] = useState('')
   const [saving, setSaving]     = useState(false)
@@ -279,7 +281,7 @@ function AddOrgModal({ onClose, onAdded, members, orgPeople }: {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Não autenticado')
-      const { error: err } = await supabase.from('organograma_pessoas').insert({ user_id: user.id, nome: nome.trim(), parent_id: parentId || null })
+      const { error: err } = await supabase.from('organograma_pessoas').insert({ user_id: user.id, empresa_id: empresaId || null, nome: nome.trim(), parent_id: parentId || null })
       if (err) throw new Error(err.message)
       onAdded(); onClose()
     } catch (e) { setError(e instanceof Error ? e.message : 'Erro') }
@@ -575,8 +577,9 @@ function ChildrenRow({ nodes, onSelectMember, onSelectOrg }: {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function EquipePage() {
-  const { user }  = useAuth()
-  const supabase  = createClient()
+  const { user }       = useAuth()
+  const supabase       = createClient()
+  const { empresaId }  = useEmpresa()
 
   const [members, setMembers]               = useState<Member[]>([])
   const [orgPeople, setOrgPeople]           = useState<OrgPerson[]>([])
@@ -594,9 +597,10 @@ export default function EquipePage() {
   async function fetchAll() {
     const [membersRes, orgRes] = await Promise.all([
       fetch('/api/team/members'),
-      supabase.from('organograma_pessoas')
-        .select('id, nome, cargo, telefone, email, endereco, remuneracao, data_entrada, aniversario, parent_id')
-        .order('created_at', { ascending: true }),
+      (empresaId
+        ? supabase.from('organograma_pessoas').select('id, nome, cargo, telefone, email, endereco, remuneracao, data_entrada, aniversario, parent_id').eq('empresa_id', empresaId)
+        : supabase.from('organograma_pessoas').select('id, nome, cargo, telefone, email, endereco, remuneracao, data_entrada, aniversario, parent_id').is('empresa_id', null)
+      ).order('created_at', { ascending: true }),
     ])
     if (membersRes.ok) setMembers(await membersRes.json())
     setOrgPeople((orgRes.data ?? []) as OrgPerson[])
@@ -632,7 +636,7 @@ export default function EquipePage() {
     setSelectedOrg(prev => prev?.id === id ? { ...prev, ...fields } as OrgPerson : prev)
   }
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => { fetchAll() }, [empresaId])
 
   const rootNodes = buildTree(members, orgPeople)
 

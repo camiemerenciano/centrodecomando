@@ -6,6 +6,7 @@ import {
   Plus, Trash2, DollarSign, Check, X, Pencil, LayoutGrid, List,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useEmpresa } from '@/contexts/empresa-context'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -413,7 +414,8 @@ export function FinanceiroModule() {
   const [trendData, setTrendData] = useState<{ periodo: string; receita: number; custos: number }[]>([])
   const [userId, setUserId]       = useState<string | null>(null)
   const [rightTab, setRightTab]   = useState<'tendencia' | 'categorias'>('categorias')
-  const supabase = createClient()
+  const supabase    = createClient()
+  const { empresaId } = useEmpresa()
 
   const loadTrend = useCallback(async (uid: string, p: string) => {
     const periods = Array.from({ length: 6 }, (_, i) => addMonths(p, -5 + i))
@@ -433,9 +435,8 @@ export function FinanceiroModule() {
     if (!user) return
     setUserId(user.id)
 
-    const { data } = await supabase
-      .from('financeiro_lancamentos').select('*')
-      .eq('user_id', user.id).eq('periodo', periodo)
+    const q = supabase.from('financeiro_lancamentos').select('*').eq('user_id', user.id).eq('periodo', periodo)
+    const { data } = await (empresaId ? q.eq('empresa_id', empresaId) : q.is('empresa_id', null))
       .order('created_at', { ascending: true })
 
     const rows: Lancamento[] = (data ?? []).map(r => ({
@@ -446,14 +447,14 @@ export function FinanceiroModule() {
     setReceitas(rows.filter(r => r.tipo === 'receita'))
     setCustos(rows.filter(r => r.tipo === 'custo'))
     loadTrend(user.id, periodo)
-  }, [periodo, supabase, loadTrend])
+  }, [periodo, empresaId, supabase, loadTrend])
 
   useEffect(() => { load() }, [load])
 
   async function handleAdd(tipo: 'receita' | 'custo', descricao: string, valor: number, categoria: string) {
     if (!userId) return
     const { data } = await supabase.from('financeiro_lancamentos')
-      .insert({ user_id: userId, periodo, tipo, descricao, valor, categoria })
+      .insert({ user_id: userId, empresa_id: empresaId || null, periodo, tipo, descricao, valor, categoria })
       .select().single()
     if (!data) return
     const item: Lancamento = { id: data.id, tipo, descricao, valor, categoria, createdAt: data.created_at }

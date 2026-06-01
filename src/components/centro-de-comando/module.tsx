@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { useEmpresa } from '@/contexts/empresa-context'
 import {
   AlertTriangle, Calendar, Sparkles, Loader2, RefreshCw,
   Clock, Wifi, WifiOff, FolderOpen, Activity,
@@ -45,7 +46,10 @@ function calcHealth(atrasadas: number, concluidas: number, emAndamento: number):
 // ─── Module ───────────────────────────────────────────────────────────────────
 
 export function CentroDeComandoModule() {
-  const supabase = createClient()
+  const supabase      = createClient()
+  const { empresaId } = useEmpresa()
+  const empresaIdRef  = useRef(empresaId)
+  empresaIdRef.current = empresaId
 
   const [loading, setLoading]                     = useState(true)
   const [atrasadas, setAtrasadas]                 = useState<TarefaAtrasada[]>([])
@@ -74,7 +78,7 @@ export function CentroDeComandoModule() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => { loadAll() }, [loadAll])
+  useEffect(() => { loadAll() }, [loadAll, empresaId])
 
   // ── Tarefas + saúde operacional ────────────────────────────────────────────
 
@@ -91,7 +95,7 @@ export function CentroDeComandoModule() {
         .not('status', 'in', '("concluido","arquivado")')
         .order('due_date', { ascending: true }),
 
-      fetch('/api/projetos'),
+      fetch(empresaIdRef.current ? `/api/projetos?empresa_id=${empresaIdRef.current}` : '/api/projetos?empresa_id='),
 
       // Concluídas nos últimos 30 dias
       supabase
@@ -126,7 +130,7 @@ export function CentroDeComandoModule() {
   // ── Projetos ativos ────────────────────────────────────────────────────────
 
   async function loadProjetos() {
-    const res = await fetch('/api/projetos')
+    const res = await fetch(empresaIdRef.current ? `/api/projetos?empresa_id=${empresaIdRef.current}` : '/api/projetos?empresa_id=')
     if (!res.ok) return
     const projetos: unknown[] = await res.json()
     setProjetosAtivos(projetos.length)

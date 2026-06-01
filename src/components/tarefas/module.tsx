@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
+import { useEmpresa } from '@/contexts/empresa-context'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -697,7 +698,8 @@ export function TarefasModule() {
   const [members, setMembers]         = useState<Member[]>([])
   const [projetos, setProjetos]       = useState<Projeto[]>([])
   const [blockedMsg, setBlockedMsg]   = useState<string | null>(null)
-  const supabase = createClient()
+  const supabase    = createClient()
+  const { empresaId } = useEmpresa()
 
   useEffect(() => {
     async function load() {
@@ -706,7 +708,7 @@ export function TarefasModule() {
       setUserId(user.id)
 
       const [projRes, wsRes, { data: clientesData }] = await Promise.all([
-        fetch('/api/projetos').then(r => r.ok ? r.json() : []),
+        fetch(empresaId ? `/api/projetos?empresa_id=${empresaId}` : '/api/projetos?empresa_id=').then(r => r.ok ? r.json() : []),
         fetch('/api/team/workspace').then(r => r.ok ? r.json() : { ownerId: user.id, members: [] }),
         supabase.from('clientes').select('name').eq('user_id', user.id).order('name'),
       ])
@@ -722,11 +724,10 @@ export function TarefasModule() {
 
       // Load tasks visible to this user: tasks they created OR are assigned to
       const [{ data: tarefasData }, { data: depsData }] = await Promise.all([
-        supabase
-          .from('tarefas')
-          .select('*')
-          .or(`user_id.eq.${user.id},assignee_id.eq.${user.id}`)
-          .order('created_at', { ascending: true }),
+        (empresaId
+          ? supabase.from('tarefas').select('*').or(`user_id.eq.${user.id},assignee_id.eq.${user.id}`).eq('empresa_id', empresaId)
+          : supabase.from('tarefas').select('*').or(`user_id.eq.${user.id},assignee_id.eq.${user.id}`).is('empresa_id', null)
+        ).order('created_at', { ascending: true }),
         supabase
           .from('tarefa_dependencias')
           .select('tarefa_id, depende_de_id')
@@ -753,7 +754,7 @@ export function TarefasModule() {
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [empresaId])
 
   const filtered = useMemo(() => tasks.filter(t => {
     if (filterStatus !== 'all' && t.status !== filterStatus) return false
@@ -793,6 +794,7 @@ export function TarefasModule() {
     if (!userId) return
     const row = {
       user_id:            userId,
+      empresa_id:         empresaId || null,
       title:              task.title,
       description:        task.description,
       client:             task.client,

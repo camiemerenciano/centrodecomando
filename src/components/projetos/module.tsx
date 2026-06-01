@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useEmpresa } from '@/contexts/empresa-context'
 import {
   Plus, X, Pencil, Trash2, ChevronDown, Calendar,
   FolderKanban, Clock, Layers, CheckCircle2, PauseCircle,
@@ -303,10 +304,12 @@ export function ProjetosModule() {
   const [editing, setEditing]       = useState<Projeto | null>(null)
   const [saving, setSaving]         = useState(false)
   const [clientNames, setClientNames] = useState<string[]>([])
+  const { empresaId } = useEmpresa()
 
   async function load() {
+    const qs = empresaId ? `?empresa_id=${empresaId}` : '?empresa_id='
     const [projRes, cliRes] = await Promise.all([
-      fetch('/api/projetos'),
+      fetch(`/api/projetos${qs}`),
       fetch('/api/clientes'),
     ])
     if (projRes.ok) setProjetos(await projRes.json())
@@ -317,7 +320,7 @@ export function ProjetosModule() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [empresaId])
 
   const filtered = useMemo(() =>
     filterStatus === 'all' ? projetos : projetos.filter(p => p.status === filterStatus),
@@ -334,6 +337,7 @@ export function ProjetosModule() {
   async function handleSave(form: FormState) {
     setSaving(true)
     const body = {
+      empresa_id:  empresaId || null,
       nome:        form.nome.trim(),
       descricao:   form.descricao.trim(),
       cliente:     form.cliente,

@@ -23,9 +23,12 @@ import {
   TrendingUp,
   Command,
   Files,
+  Plus,
+  Building2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
+import { useEmpresa, type Empresa } from '@/contexts/empresa-context'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/client'
@@ -90,10 +93,15 @@ export function AppSidebar() {
   const pathname = usePathname()
   const { user, role, signOut } = useAuth()
   const supabase = createClient()
+  const { empresa, empresas, empresaId, setEmpresaId, reload: reloadEmpresas } = useEmpresa()
 
-  const [notifs, setNotifs]   = useState<Notif[]>([])
-  const [bellOpen, setBellOpen] = useState(false)
-  const notifIdRef             = useRef(0)
+  const [notifs, setNotifs]         = useState<Notif[]>([])
+  const [bellOpen, setBellOpen]     = useState(false)
+  const [empresaOpen, setEmpresaOpen] = useState(false)
+  const [novaEmpresa, setNovaEmpresa] = useState(false)
+  const [nomeEmpresa, setNomeEmpresa] = useState('')
+  const [savingEmpresa, setSavingEmpresa] = useState(false)
+  const notifIdRef                  = useRef(0)
 
   const unreadCount = notifs.filter(n => !n.lida).length
 
@@ -203,6 +211,19 @@ export function AppSidebar() {
     return `${Math.floor(diff / 3600)}h`
   }
 
+  async function criarEmpresa() {
+    if (!nomeEmpresa.trim() || !user) return
+    setSavingEmpresa(true)
+    const { data } = await supabase.from('empresas')
+      .insert({ owner_id: user.id, nome: nomeEmpresa.trim(), cor: 'violet' })
+      .select('id').single()
+    if (data) {
+      await reloadEmpresas()
+      setEmpresaId(data.id)
+    }
+    setNomeEmpresa(''); setNovaEmpresa(false); setSavingEmpresa(false); setEmpresaOpen(false)
+  }
+
   return (
     <>
       <aside className="flex flex-col w-60 min-h-screen border-r border-sidebar-border bg-sidebar shrink-0">
@@ -217,6 +238,68 @@ export function AppSidebar() {
               Método ÓRBITA
             </p>
           </div>
+        </div>
+
+        {/* Empresa switcher */}
+        <div className="px-3 py-2 border-b border-sidebar-border relative">
+          <button
+            onClick={() => { setEmpresaOpen(v => !v); setNovaEmpresa(false) }}
+            className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-all text-left"
+          >
+            <div className="w-6 h-6 rounded-md bg-primary/20 flex items-center justify-center shrink-0">
+              <Building2 size={12} className="text-primary" />
+            </div>
+            <span className="flex-1 text-xs font-medium text-sidebar-foreground truncate">
+              {empresa?.nome ?? 'Selecionar empresa'}
+            </span>
+            <ChevronDown size={12} className={`text-muted-foreground transition-transform shrink-0 ${empresaOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {empresaOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => { setEmpresaOpen(false); setNovaEmpresa(false) }} />
+              <div className="absolute left-3 right-3 top-full mt-1 z-20 bg-popover border border-border rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                {empresas.map(e => (
+                  <button
+                    key={e.id}
+                    onClick={() => { setEmpresaId(e.id); setEmpresaOpen(false) }}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-left hover:bg-muted transition-colors ${e.id === empresaId ? 'bg-primary/8 text-primary font-medium' : 'text-foreground'}`}
+                  >
+                    <div className="w-5 h-5 rounded bg-primary/15 flex items-center justify-center shrink-0">
+                      <Building2 size={11} className="text-primary" />
+                    </div>
+                    <span className="truncate">{e.nome}</span>
+                    {e.id === empresaId && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                  </button>
+                ))}
+
+                <div className="border-t border-border">
+                  {novaEmpresa ? (
+                    <div className="flex items-center gap-1.5 px-2 py-2">
+                      <input
+                        value={nomeEmpresa}
+                        onChange={e => setNomeEmpresa(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') criarEmpresa(); if (e.key === 'Escape') setNovaEmpresa(false) }}
+                        placeholder="Nome da empresa"
+                        className="flex-1 h-7 rounded-lg bg-muted border border-border px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                        autoFocus
+                      />
+                      <button onClick={criarEmpresa} disabled={!nomeEmpresa.trim() || savingEmpresa} className="h-7 px-2 rounded-lg bg-primary text-white text-xs disabled:opacity-50 hover:bg-primary/90 transition-colors">
+                        {savingEmpresa ? '…' : 'OK'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setNovaEmpresa(true)}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    >
+                      <Plus size={12} /> Nova empresa
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Navigation */}
