@@ -1,9 +1,8 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
-import { createClient } from '@/lib/supabase/client'
 
-export interface Empresa { id: string; nome: string; cor: string }
+export interface Empresa { id: string; nome: string; cor: string; team?: boolean }
 
 interface EmpresaCtx {
   empresaId: string | null
@@ -20,31 +19,28 @@ const Ctx = createContext<EmpresaCtx>({
 })
 
 export function EmpresaProvider({ children }: { children: ReactNode }) {
-  const supabase = createClient()
-  const [empresas, setEmpresas]   = useState<Empresa[]>([])
-  const [empresaId, setId]        = useState<string | null>(null)
-  const [loading, setLoading]     = useState(true)
+  const [empresas, setEmpresas] = useState<Empresa[]>([])
+  const [empresaId, setId]      = useState<string | null>(null)
+  const [loading, setLoading]   = useState(true)
 
   const load = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setLoading(false); return }
+    try {
+      const res = await fetch('/api/empresas')
+      if (!res.ok) { setLoading(false); return }
+      const list: Empresa[] = await res.json()
+      setEmpresas(list)
 
-    const { data } = await supabase
-      .from('empresas').select('id, nome, cor')
-      .eq('owner_id', user.id).order('created_at')
-
-    const list: Empresa[] = data ?? []
-    setEmpresas(list)
-
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('empresa_id') : null
-    if (saved && list.find(e => e.id === saved)) {
-      setId(saved)
-    } else if (list.length > 0) {
-      setId(list[0].id)
-      localStorage.setItem('empresa_id', list[0].id)
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('empresa_id') : null
+      if (saved && list.find(e => e.id === saved)) {
+        setId(saved)
+      } else if (list.length > 0) {
+        setId(list[0].id)
+        localStorage.setItem('empresa_id', list[0].id)
+      }
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
-  }, [supabase])
+  }, [])
 
   useEffect(() => { load() }, [load])
 

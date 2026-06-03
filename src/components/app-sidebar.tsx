@@ -259,7 +259,7 @@ export function AppSidebar() {
             <>
               <div className="fixed inset-0 z-10" onClick={() => { setEmpresaOpen(false); setNovaEmpresa(false) }} />
               <div className="absolute left-3 right-3 top-full mt-1 z-20 bg-popover border border-border rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                {empresas.map(e => (
+                {empresas.map((e: Empresa) => (
                   <button
                     key={e.id}
                     onClick={() => { setEmpresaId(e.id); setEmpresaOpen(false) }}
@@ -268,8 +268,9 @@ export function AppSidebar() {
                     <div className="w-5 h-5 rounded bg-primary/15 flex items-center justify-center shrink-0">
                       <Building2 size={11} className="text-primary" />
                     </div>
-                    <span className="truncate">{e.nome}</span>
-                    {e.id === empresaId && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                    <span className="truncate flex-1">{e.nome}</span>
+                    {e.team && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1 shrink-0">equipe</span>}
+                    {e.id === empresaId && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
                   </button>
                 ))}
 
