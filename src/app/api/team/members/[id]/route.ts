@@ -20,7 +20,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   if (!link) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { cargo, telefone, endereco, remuneracao, data_entrada, aniversario } = await req.json()
+  const { cargo, telefone, endereco, remuneracao, data_entrada, aniversario, parent_id } = await req.json()
 
   const { error } = await admin.from('perfis').upsert({
     id,
@@ -30,6 +30,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     remuneracao:  remuneracao  ?? null,
     data_entrada: data_entrada || null,
     aniversario:  aniversario  || null,
+    parent_id:    parent_id !== undefined ? (parent_id || null) : undefined,
   }, { onConflict: 'id' })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -22,10 +22,10 @@ export async function GET() {
   let perfis: any[] | null = null
   ;({ data: perfis } = await admin
     .from('perfis')
-    .select('id, cargo, telefone, endereco, remuneracao, data_entrada, aniversario')
+    .select('id, cargo, telefone, endereco, remuneracao, data_entrada, aniversario, parent_id')
     .in('id', memberIds))
 
-  // Fallback: se a coluna telefone ainda não existir, busca sem ela
+  // Fallback sem colunas novas
   if (!perfis) {
     ;({ data: perfis } = await admin
       .from('perfis')
@@ -50,6 +50,7 @@ export async function GET() {
         remuneracao:  perfil?.remuneracao  ?? null,
         data_entrada: perfil?.data_entrada ?? null,
         aniversario:  perfil?.aniversario  ?? null,
+        parent_id:    perfil?.parent_id    ?? null,
       }
     })
   )
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { nome, email, senha } = await req.json()
+  const { nome, email, senha, parent_id } = await req.json()
   if (!email) return NextResponse.json({ error: 'E-mail é obrigatório' }, { status: 400 })
 
   const admin = createAdminClient()
@@ -104,6 +105,11 @@ export async function POST(req: Request) {
   }
 
   await admin.from('team_members').insert({ owner_id: user.id, member_id: memberId })
+
+  // Salva o parent_id no perfil
+  if (parent_id) {
+    await admin.from('perfis').upsert({ id: memberId, parent_id }, { onConflict: 'id' })
+  }
 
   return NextResponse.json({ id: memberId })
 }

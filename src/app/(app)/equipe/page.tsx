@@ -18,6 +18,7 @@ interface Member {
   id: string; nome: string; email: string
   cargo: string | null; telefone: string | null; endereco: string | null
   remuneracao: number | null; data_entrada: string | null; aniversario: string | null
+  parent_id: string | null
 }
 
 interface OrgPerson {
@@ -61,8 +62,19 @@ function buildTree(members: Member[], orgPeople: OrgPerson[]): TreeNode[] {
   const orgNodes = new Map<string, TreeNode>()
   orgPeople.forEach(p => orgNodes.set(p.id, { kind: 'org', id: p.id, nome: p.nome, cargo: p.cargo, data: p, children: [] }))
 
-  const roots: TreeNode[] = [...memberNodes.values()]
+  const roots: TreeNode[] = []
 
+  // Membros com suporte a hierarquia via parent_id
+  members.forEach(m => {
+    const node = memberNodes.get(m.id)!
+    if (m.parent_id) {
+      const parent = memberNodes.get(m.parent_id) ?? orgNodes.get(m.parent_id)
+      if (parent) { parent.children.push(node); return }
+    }
+    roots.push(node)
+  })
+
+  // Pessoas do organograma
   orgPeople.forEach(p => {
     const node = orgNodes.get(p.id)!
     if (p.parent_id) {
@@ -210,8 +222,11 @@ function ProfileView({ cargo, telefone, email, endereco, data_entrada, aniversar
 
 // ─── Invite (manual) Modal ────────────────────────────────────────────────────
 
-function AddManualModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+function AddManualModal({ onClose, onAdded, members, orgPeople }: {
+  onClose: () => void; onAdded: () => void; members: Member[]; orgPeople: OrgPerson[]
+}) {
   const [form, setForm]         = useState({ nome: '', email: '', senha: '' })
+  const [parentId, setParentId] = useState('')
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
   const [showPass, setShowPass] = useState(false)
@@ -222,7 +237,10 @@ function AddManualModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
     if (!form.email) { setError('E-mail é obrigatório.'); return }
     setSaving(true); setError('')
     try {
-      const res  = await fetch('/api/team/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      const res  = await fetch('/api/team/members', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, parent_id: parentId || null }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erro ao adicionar membro')
       onAdded(); onClose()
@@ -230,7 +248,8 @@ function AddManualModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
     finally { setSaving(false) }
   }
 
-  const inp = 'w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all'
+  const inp  = 'w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all'
+  const selCls = inp + ' appearance-none cursor-pointer'
 
   return (
     <Modal>
@@ -254,6 +273,21 @@ function AddManualModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
               {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
+        </Field>
+        <Field icon={<ChevronDown size={13} />} label="Reporta a">
+          <select value={parentId} onChange={e => setParentId(e.target.value)} className={selCls}>
+            <option value="">Proprietário</option>
+            {members.length > 0 && (
+              <optgroup label="Equipe (com acesso)">
+                {members.map(m => <option key={m.id} value={m.id}>{m.nome}{m.cargo ? ` — ${m.cargo}` : ''}</option>)}
+              </optgroup>
+            )}
+            {orgPeople.length > 0 && (
+              <optgroup label="Organograma">
+                {orgPeople.map(p => <option key={p.id} value={p.id}>{p.nome}{p.cargo ? ` — ${p.cargo}` : ''}</option>)}
+              </optgroup>
+            )}
+          </select>
         </Field>
         {error && <ErrorMsg msg={error} />}
       </div>
@@ -329,15 +363,16 @@ function AddOrgModal({ onClose, onAdded, members, orgPeople }: {
 
 // ─── Member detail Modal ──────────────────────────────────────────────────────
 
-function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
+function MemberModal({ member, onClose, onDelete, onSave, deleting, members, orgPeople }: {
   member: Member; onClose: () => void
   onDelete: (m: Member) => void
   onSave: (id: string, fields: Partial<Member>) => Promise<void>
-  deleting: boolean
+  deleting: boolean; members: Member[]; orgPeople: OrgPerson[]
 }) {
   const hasData = !!(member.cargo || member.telefone || member.endereco || member.data_entrada || member.aniversario || member.remuneracao)
   const [editing, setEditing] = useState(!hasData)
   const [saving, setSaving]   = useState(false)
+  const [parentId, setParentId] = useState(member.parent_id ?? '')
   const [form, setForm]       = useState<ProfileForm>({
     cargo:        member.cargo        ?? '',
     telefone:     member.telefone     ?? '',
@@ -352,6 +387,7 @@ function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
 
   function cancelEdit() {
     setEditing(false)
+    setParentId(member.parent_id ?? '')
     setForm({ cargo: member.cargo ?? '', telefone: member.telefone ?? '', email: member.email ?? '', endereco: member.endereco ?? '', remuneracao: member.remuneracao != null ? String(member.remuneracao) : '', data_entrada: member.data_entrada ?? '', aniversario: member.aniversario ?? '' })
   }
 
@@ -364,11 +400,13 @@ function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
       remuneracao:  form.remuneracao  ? Number(form.remuneracao) : null,
       data_entrada: form.data_entrada || null,
       aniversario:  form.aniversario  || null,
+      parent_id:    parentId          || null,
     })
     setSaving(false); setEditing(false)
   }
 
-  const inp = 'w-full h-8 rounded-lg bg-muted border border-border px-3 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all'
+  const inp    = 'w-full h-8 rounded-lg bg-muted border border-border px-3 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all'
+  const selCls = inp + ' appearance-none cursor-pointer'
 
   return (
     <Modal>
@@ -389,10 +427,39 @@ function MemberModal({ member, onClose, onDelete, onSave, deleting }: {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-4">
-        {editing
-          ? <ProfileFields form={form} onChange={onChange} inp={inp} />
-          : <ProfileView cargo={member.cargo} telefone={member.telefone} email={member.email} endereco={member.endereco} data_entrada={member.data_entrada} aniversario={member.aniversario} remuneracao={member.remuneracao} />
-        }
+        {editing ? (
+          <div className="space-y-3">
+            <ProfileFields form={form} onChange={onChange} inp={inp} />
+            <Field icon={<ChevronDown size={13} />} label="Reporta a">
+              <select value={parentId} onChange={e => setParentId(e.target.value)} className={selCls}>
+                <option value="">Proprietário</option>
+                {members.filter(m => m.id !== member.id).length > 0 && (
+                  <optgroup label="Equipe (com acesso)">
+                    {members.filter(m => m.id !== member.id).map(m => <option key={m.id} value={m.id}>{m.nome}{m.cargo ? ` — ${m.cargo}` : ''}</option>)}
+                  </optgroup>
+                )}
+                {orgPeople.length > 0 && (
+                  <optgroup label="Organograma">
+                    {orgPeople.map(p => <option key={p.id} value={p.id}>{p.nome}{p.cargo ? ` — ${p.cargo}` : ''}</option>)}
+                  </optgroup>
+                )}
+              </select>
+            </Field>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            <ProfileView cargo={member.cargo} telefone={member.telefone} email={member.email} endereco={member.endereco} data_entrada={member.data_entrada} aniversario={member.aniversario} remuneracao={member.remuneracao} />
+            <InfoRow
+              icon={<ChevronDown size={13} />}
+              label="Reporta a"
+              value={
+                !member.parent_id ? 'Proprietário' :
+                members.find(m => m.id === member.parent_id)?.nome ??
+                orgPeople.find(p => p.id === member.parent_id)?.nome ?? '—'
+              }
+            />
+          </div>
+        )}
       </div>
 
       <ModalFooter onClose={onClose} deleteAction={() => onDelete(member)} deleting={deleting}>
@@ -712,10 +779,10 @@ export default function EquipePage() {
         )}
       </div>
 
-      {showManual && <AddManualModal onClose={() => setShowManual(false)} onAdded={fetchAll} />}
+      {showManual && <AddManualModal onClose={() => setShowManual(false)} onAdded={fetchAll} members={members} orgPeople={orgPeople} />}
       {showOrg    && <AddOrgModal   onClose={() => setShowOrg(false)}    onAdded={fetchAll} members={members} orgPeople={orgPeople} />}
       {selectedMember && (
-        <MemberModal member={selectedMember} onClose={() => setSelectedMember(null)} onDelete={deleteMember} onSave={saveMember} deleting={deletingId === selectedMember.id} />
+        <MemberModal member={selectedMember} onClose={() => setSelectedMember(null)} onDelete={deleteMember} onSave={saveMember} deleting={deletingId === selectedMember.id} members={members} orgPeople={orgPeople} />
       )}
       {selectedOrg && (
         <OrgPersonModal person={selectedOrg} onClose={() => setSelectedOrg(null)} onDelete={deleteOrgPerson} onSave={saveOrgPerson} deleting={deletingId === selectedOrg.id} members={members} orgPeople={orgPeople} />
