@@ -85,32 +85,25 @@ export function CentroDeComandoModule() {
   async function loadTarefas(userId: string, todayStr: string, today: Date) {
     const thirtyDaysAgo = new Date(today.getTime() - 30 * 86400000).toISOString()
 
+    const eid = empresaIdRef.current
+
+    const qAtrasadas = eid
+      ? supabase.from('tarefas').select('id, title, due_date, projeto_id').or(`user_id.eq.${userId},assignee_id.eq.${userId}`).eq('empresa_id', eid).lt('due_date', todayStr).not('status', 'in', '("concluido","arquivado")').order('due_date', { ascending: true })
+      : supabase.from('tarefas').select('id, title, due_date, projeto_id').or(`user_id.eq.${userId},assignee_id.eq.${userId}`).is('empresa_id', null).lt('due_date', todayStr).not('status', 'in', '("concluido","arquivado")').order('due_date', { ascending: true })
+
+    const qConcluidas = eid
+      ? supabase.from('tarefas').select('*', { count: 'exact', head: true }).or(`user_id.eq.${userId},assignee_id.eq.${userId}`).eq('empresa_id', eid).eq('status', 'concluido').gte('created_at', thirtyDaysAgo)
+      : supabase.from('tarefas').select('*', { count: 'exact', head: true }).or(`user_id.eq.${userId},assignee_id.eq.${userId}`).is('empresa_id', null).eq('status', 'concluido').gte('created_at', thirtyDaysAgo)
+
+    const qEmAndamento = eid
+      ? supabase.from('tarefas').select('*', { count: 'exact', head: true }).or(`user_id.eq.${userId},assignee_id.eq.${userId}`).eq('empresa_id', eid).eq('status', 'em_andamento')
+      : supabase.from('tarefas').select('*', { count: 'exact', head: true }).or(`user_id.eq.${userId},assignee_id.eq.${userId}`).is('empresa_id', null).eq('status', 'em_andamento')
+
     const [{ data: tarefasData }, projRes, { count: concluidasCount }, { count: emAndamentoCount }] = await Promise.all([
-      // Atrasadas
-      supabase
-        .from('tarefas')
-        .select('id, title, due_date, projeto_id')
-        .or(`user_id.eq.${userId},assignee_id.eq.${userId}`)
-        .lt('due_date', todayStr)
-        .not('status', 'in', '("concluido","arquivado")')
-        .order('due_date', { ascending: true }),
-
-      fetch(empresaIdRef.current ? `/api/projetos?empresa_id=${empresaIdRef.current}` : '/api/projetos?empresa_id='),
-
-      // Concluídas nos últimos 30 dias
-      supabase
-        .from('tarefas')
-        .select('*', { count: 'exact', head: true })
-        .or(`user_id.eq.${userId},assignee_id.eq.${userId}`)
-        .eq('status', 'concluido')
-        .gte('created_at', thirtyDaysAgo),
-
-      // Em andamento
-      supabase
-        .from('tarefas')
-        .select('*', { count: 'exact', head: true })
-        .or(`user_id.eq.${userId},assignee_id.eq.${userId}`)
-        .eq('status', 'em_andamento'),
+      qAtrasadas,
+      fetch(eid ? `/api/projetos?empresa_id=${eid}` : '/api/projetos?empresa_id='),
+      qConcluidas,
+      qEmAndamento,
     ])
 
     const projetos: { id: string; nome: string }[] = projRes.ok ? await projRes.json() : []
