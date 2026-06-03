@@ -219,12 +219,12 @@ function AddManualModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
   function field(k: keyof typeof form, v: string) { setForm(f => ({ ...f, [k]: v })) }
 
   async function save() {
-    if (!form.nome || !form.email || !form.senha) { setError('Preencha todos os campos.'); return }
+    if (!form.email) { setError('E-mail é obrigatório.'); return }
     setSaving(true); setError('')
     try {
       const res  = await fetch('/api/team/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Erro ao criar membro')
+      if (!res.ok) throw new Error(data.error ?? 'Erro ao adicionar membro')
       onAdded(); onClose()
     } catch (e) { setError(e instanceof Error ? e.message : 'Erro') }
     finally { setSaving(false) }
@@ -234,15 +234,20 @@ function AddManualModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
 
   return (
     <Modal>
-      <ModalHeader title="Convidar membro" sub="Cria conta com email e senha" onClose={onClose} />
+      <ModalHeader title="Convidar membro" sub="Vincule quem já tem conta ou crie uma nova" onClose={onClose} />
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-3">
-        <Field icon={<UserPlus size={13} />} label="Nome completo">
-          <input value={form.nome} onChange={e => field('nome', e.target.value)} placeholder="Ana Silva" className={inp} autoFocus />
+        <div className="rounded-lg bg-sky-500/8 border border-sky-500/20 px-3 py-2.5">
+          <p className="text-[11px] text-sky-400 leading-relaxed">
+            Se o membro já tem conta na plataforma, basta informar o e-mail. Nome e senha são necessários apenas para criar uma conta nova.
+          </p>
+        </div>
+        <Field icon={<Mail size={13} />} label={<>E-mail <span className="text-red-400">*</span></>}>
+          <input type="email" value={form.email} onChange={e => field('email', e.target.value)} placeholder="ana@empresa.com" className={inp} autoFocus />
         </Field>
-        <Field icon={<Mail size={13} />} label="E-mail">
-          <input type="email" value={form.email} onChange={e => field('email', e.target.value)} placeholder="ana@empresa.com" className={inp} />
+        <Field icon={<UserPlus size={13} />} label={<>Nome completo <span className="text-muted-foreground font-normal normal-case">(conta nova)</span></>}>
+          <input value={form.nome} onChange={e => field('nome', e.target.value)} placeholder="Ana Silva" className={inp} />
         </Field>
-        <Field icon={<Briefcase size={13} />} label="Senha">
+        <Field icon={<Briefcase size={13} />} label={<>Senha <span className="text-muted-foreground font-normal normal-case">(conta nova)</span></>}>
           <div className="relative">
             <input type={showPass ? 'text' : 'password'} value={form.senha} onChange={e => field('senha', e.target.value)} onKeyDown={e => e.key === 'Enter' && save()} placeholder="Mínimo 8 caracteres" className={inp + ' pr-10'} />
             <button type="button" onClick={() => setShowPass(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
@@ -253,8 +258,8 @@ function AddManualModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
         {error && <ErrorMsg msg={error} />}
       </div>
       <ModalFooter onClose={onClose}>
-        <Button size="sm" onClick={save} disabled={saving} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
-          {saving ? <><Loader2 size={12} className="animate-spin" /> Criando…</> : <><UserPlus size={12} /> Convidar</>}
+        <Button size="sm" onClick={save} disabled={saving || !form.email} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
+          {saving ? <><Loader2 size={12} className="animate-spin" /> Verificando…</> : <><UserPlus size={12} /> Adicionar</>}
         </Button>
       </ModalFooter>
     </Modal>

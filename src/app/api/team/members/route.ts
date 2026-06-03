@@ -63,20 +63,47 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { nome, email, senha } = await req.json()
-  if (!nome || !email || !senha) return NextResponse.json({ error: 'Nome, e-mail e senha são obrigatórios' }, { status: 400 })
+  if (!email) return NextResponse.json({ error: 'E-mail é obrigatório' }, { status: 400 })
 
   const admin = createAdminClient()
 
-  const { data: created, error } = await admin.auth.admin.createUser({
-    email,
-    password: senha,
-    email_confirm: true,
-    user_metadata: { full_name: nome, must_change_password: true },
-  })
+  // Verifica se já existe uma conta com esse e-mail
+  const { data: usersPage } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+  const existing = usersPage?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase())
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  let memberId: string
 
-  await admin.from('team_members').insert({ owner_id: user.id, member_id: created.user.id })
+  if (existing) {
+    // Conta já existe — só vincula
+    memberId = existing.id
+  } else {
+    // Conta nova — nome e senha são obrigatórios
+    if (!nome || !senha) {
+      return NextResponse.json(
+        { error: 'Nenhuma conta encontrada com esse e-mail. Informe nome e senha para criar uma nova conta.' },
+        { status: 400 }
+      )
+    }
+    const { data: created, error } = await admin.auth.admin.createUser({
+      email,
+      password: senha,
+      email_confirm: true,
+      user_metadata: { full_name: nome, must_change_password: true },
+    })
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    memberId = created.user.id
+  }
 
-  return NextResponse.json({ id: created.user.id })
+  // Evita duplicata
+  const { data: alreadyLinked } = await admin
+    .from('team_members').select('member_id')
+    .eq('owner_id', user.id).eq('member_id', memberId).maybeSingle()
+
+  if (alreadyLinked) {
+    return NextResponse.json({ error: 'Este membro já está vinculado à sua equipe.' }, { status: 400 })
+  }
+
+  await admin.from('team_members').insert({ owner_id: user.id, member_id: memberId })
+
+  return NextResponse.json({ id: memberId })
 }
