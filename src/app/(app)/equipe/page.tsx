@@ -225,6 +225,7 @@ function ProfileView({ cargo, telefone, email, endereco, data_entrada, aniversar
 function AddManualModal({ onClose, onAdded, members, orgPeople }: {
   onClose: () => void; onAdded: () => void; members: Member[]; orgPeople: OrgPerson[]
 }) {
+  const { empresaId } = useEmpresa()
   const [form, setForm]         = useState({ nome: '', email: '', senha: '' })
   const [parentId, setParentId] = useState('')
   const [saving, setSaving]     = useState(false)
@@ -239,7 +240,7 @@ function AddManualModal({ onClose, onAdded, members, orgPeople }: {
     try {
       const res  = await fetch('/api/team/members', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, parent_id: parentId || null }),
+        body: JSON.stringify({ ...form, parent_id: parentId || null, empresa_id: empresaId || null }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erro ao adicionar membro')

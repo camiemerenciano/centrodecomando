@@ -63,7 +63,7 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { nome, email, senha, parent_id } = await req.json()
+  const { nome, email, senha, parent_id, empresa_id } = await req.json()
   if (!email) return NextResponse.json({ error: 'E-mail é obrigatório' }, { status: 400 })
 
   const admin = createAdminClient()
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Este membro já está vinculado à sua equipe.' }, { status: 400 })
   }
 
-  await admin.from('team_members').insert({ owner_id: user.id, member_id: memberId })
+  await admin.from('team_members').insert({ owner_id: user.id, member_id: memberId, empresa_id: empresa_id || null })
 
   // Salva o parent_id no perfil
   if (parent_id) {

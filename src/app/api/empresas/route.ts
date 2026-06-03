@@ -17,19 +17,21 @@ export async function GET() {
     .from('empresas').select('id, nome, cor')
     .eq('owner_id', user.id).order('created_at')
 
-  // Verifica se é membro de outro workspace
+  // Verifica se é membro de outro workspace e qual empresa foi convidado
   const { data: asMember } = await admin
-    .from('team_members').select('owner_id')
+    .from('team_members').select('owner_id, empresa_id')
     .eq('member_id', user.id)
 
-  const ownerIds = (asMember ?? []).map(r => r.owner_id)
-
   let team: { id: string; nome: string; cor: string; team: boolean }[] = []
-  if (ownerIds.length > 0) {
-    const { data: teamEmpresas } = await admin
-      .from('empresas').select('id, nome, cor')
-      .in('owner_id', ownerIds).order('created_at')
-    team = (teamEmpresas ?? []).map(e => ({ ...e, team: true }))
+
+  for (const link of asMember ?? []) {
+    if (link.empresa_id) {
+      // Retorna apenas a empresa específica do convite
+      const { data: e } = await admin
+        .from('empresas').select('id, nome, cor')
+        .eq('id', link.empresa_id).maybeSingle()
+      if (e) team.push({ ...e, team: true })
+    }
   }
 
   const own_ = (own ?? []).map(e => ({ ...e, team: false }))
