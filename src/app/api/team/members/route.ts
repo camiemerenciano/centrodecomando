@@ -104,7 +104,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Este membro já está vinculado à sua equipe.' }, { status: 400 })
   }
 
-  await admin.from('team_members').insert({ owner_id: user.id, member_id: memberId, empresa_id: empresa_id || null })
+  // Tenta inserir com empresa_id; se a coluna não existir ainda, insere sem ela
+  const { error: insertError } = await admin
+    .from('team_members')
+    .insert({ owner_id: user.id, member_id: memberId, empresa_id: empresa_id || null })
+
+  if (insertError) {
+    // Fallback sem empresa_id (coluna pode ainda não existir)
+    const { error: fallbackError } = await admin
+      .from('team_members')
+      .insert({ owner_id: user.id, member_id: memberId })
+    if (fallbackError) return NextResponse.json({ error: fallbackError.message }, { status: 500 })
+  }
 
   // Salva o parent_id no perfil
   if (parent_id) {
