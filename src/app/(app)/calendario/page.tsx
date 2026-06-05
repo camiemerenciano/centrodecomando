@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import {
   Plus, ChevronLeft, ChevronRight,
   AtSign, Video, FileText, Calendar,
-  RefreshCw, Loader2, AlertCircle, X, Trash2, ExternalLink, FolderOpen, CheckSquare,
+  RefreshCw, Loader2, AlertCircle, X, Trash2, ExternalLink, FolderOpen, CheckSquare, Pencil, Check,
 } from 'lucide-react'
 
 // ── types ─────────────────────────────────────────────────────────────────────
@@ -210,6 +210,37 @@ export default function CalendarioPage() {
   const [savingEvent, setSavingEvent]   = useState(false)
   const [projetos, setProjetos]         = useState<Projeto[]>([])
   const [tarefas, setTarefas]           = useState<Tarefa[]>([])
+
+  // ── Legenda editável ──────────────────────────────────────────────────────────
+  const LEGEND_KEY = 'calendario_legend_labels'
+  const [legendLabels, setLegendLabels] = useState<Record<EventType, string>>(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem(LEGEND_KEY) : null
+      return saved ? { ...typeLabels, ...JSON.parse(saved) } : { ...typeLabels }
+    } catch { return { ...typeLabels } }
+  })
+  const [editingLabel, setEditingLabel] = useState<EventType | null>(null)
+  const [labelDraft, setLabelDraft]     = useState('')
+  const labelInputRef                   = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { if (editingLabel) labelInputRef.current?.select() }, [editingLabel])
+
+  function startEditLabel(type: EventType) {
+    setEditingLabel(type)
+    setLabelDraft(legendLabels[type])
+  }
+
+  function commitLabel(type: EventType) {
+    const trimmed = labelDraft.trim()
+    if (trimmed) {
+      const next = { ...legendLabels, [type]: trimmed }
+      setLegendLabels(next)
+      localStorage.setItem(LEGEND_KEY, JSON.stringify(next))
+    }
+    setEditingLabel(null)
+  }
+
+  function cancelLabel() { setEditingLabel(null) }
 
   const weekDays = getWeekDays(weekOffset)
   const today    = new Date()
@@ -778,18 +809,47 @@ export default function CalendarioPage() {
           </CardContent>
         </Card>
 
-        {/* Legend */}
+        {/* Legend — editável */}
         <Card className="bg-card border-border shrink-0">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Legenda</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold">Legenda</CardTitle>
+              <span className="text-[10px] text-muted-foreground">clique para renomear</span>
+            </div>
           </CardHeader>
-          <CardContent className="pt-0 space-y-2">
+          <CardContent className="pt-0 space-y-1.5">
             {(Object.entries(typeColor) as [EventType, string][]).map(([type, cls]) => (
-              <div key={type} className="flex items-center gap-2">
-                <Badge className={`text-[10px] px-2 h-5 capitalize ${cls}`}>
-                  <span className="mr-1">{typeIcon[type]}</span>
-                  {type === 'google' ? 'Google Agenda' : type}
-                </Badge>
+              <div key={type} className="flex items-center gap-2 group">
+                <div className={`flex items-center gap-1 text-[10px] font-medium px-2 h-5 rounded-full shrink-0 ${cls}`}>
+                  {typeIcon[type]}
+                </div>
+
+                {editingLabel === type ? (
+                  <div className="flex items-center gap-1 flex-1">
+                    <input
+                      ref={labelInputRef}
+                      value={labelDraft}
+                      onChange={e => setLabelDraft(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') commitLabel(type); if (e.key === 'Escape') cancelLabel() }}
+                      onBlur={() => commitLabel(type)}
+                      className="flex-1 h-5 rounded bg-muted border border-primary/40 px-1.5 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 min-w-0"
+                    />
+                    <button onClick={() => commitLabel(type)} className="text-emerald-400 hover:text-emerald-300 shrink-0">
+                      <Check size={11} />
+                    </button>
+                    <button onClick={cancelLabel} className="text-muted-foreground hover:text-foreground shrink-0">
+                      <X size={11} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => startEditLabel(type)}
+                    className="flex items-center gap-1 text-[11px] text-foreground/80 hover:text-foreground transition-colors text-left group/lbl"
+                  >
+                    <span>{legendLabels[type]}</span>
+                    <Pencil size={9} className="text-muted-foreground/30 opacity-0 group-hover/lbl:opacity-100 transition-opacity shrink-0" />
+                  </button>
+                )}
               </div>
             ))}
           </CardContent>

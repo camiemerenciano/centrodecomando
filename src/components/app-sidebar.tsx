@@ -25,6 +25,7 @@ import {
   Files,
   Plus,
   Building2,
+  BookOpen,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -76,6 +77,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: '/financeiro',  label: 'Financeiro',  icon: TrendingUp },
       { href: '/equipe',      label: 'Equipe',      icon: UsersRound },
       { href: '/documentos',  label: 'Documentos',  icon: Files },
+      { href: '/processos',   label: 'Processos',   icon: BookOpen },
     ],
   },
   {

@@ -22,14 +22,14 @@ export async function GET() {
   let perfis: any[] | null = null
   ;({ data: perfis } = await admin
     .from('perfis')
-    .select('id, cargo, telefone, endereco, remuneracao, data_entrada, aniversario, parent_id')
+    .select('id, cargo, telefone, endereco, remuneracao, data_entrada, aniversario, parent_id, razao_social, nome_fantasia, cnpj, endereco_empresa, cep_empresa, telefone_empresa, email_empresa, dados_pagamento, valor_pagamento, data_pagamento, rg, cpf, cep, responsabilidades')
     .in('id', memberIds))
 
   // Fallback sem colunas novas
   if (!perfis) {
     ;({ data: perfis } = await admin
       .from('perfis')
-      .select('id, cargo, endereco, remuneracao, data_entrada, aniversario')
+      .select('id, cargo, telefone, endereco, remuneracao, data_entrada, aniversario, parent_id')
       .in('id', memberIds))
   }
 
@@ -44,13 +44,27 @@ export async function GET() {
         id:           u.id,
         nome:         (u.user_metadata?.full_name as string | undefined) ?? u.email?.split('@')[0] ?? 'Membro',
         email:        u.email ?? '',
-        cargo:        perfil?.cargo        ?? null,
-        telefone:     perfil?.telefone     ?? null,
-        endereco:     perfil?.endereco     ?? null,
-        remuneracao:  perfil?.remuneracao  ?? null,
-        data_entrada: perfil?.data_entrada ?? null,
-        aniversario:  perfil?.aniversario  ?? null,
-        parent_id:    perfil?.parent_id    ?? null,
+        cargo:            perfil?.cargo            ?? null,
+        telefone:         perfil?.telefone         ?? null,
+        endereco:         perfil?.endereco         ?? null,
+        remuneracao:      perfil?.remuneracao      ?? null,
+        data_entrada:     perfil?.data_entrada     ?? null,
+        aniversario:      perfil?.aniversario      ?? null,
+        parent_id:        perfil?.parent_id        ?? null,
+        razao_social:     perfil?.razao_social     ?? null,
+        nome_fantasia:    perfil?.nome_fantasia    ?? null,
+        cnpj:             perfil?.cnpj             ?? null,
+        endereco_empresa: perfil?.endereco_empresa ?? null,
+        cep_empresa:      perfil?.cep_empresa      ?? null,
+        telefone_empresa: perfil?.telefone_empresa ?? null,
+        email_empresa:    perfil?.email_empresa    ?? null,
+        dados_pagamento:  perfil?.dados_pagamento  ?? null,
+        valor_pagamento:  perfil?.valor_pagamento  ?? null,
+        data_pagamento:   perfil?.data_pagamento   ?? null,
+        rg:               perfil?.rg               ?? null,
+        cpf:              perfil?.cpf              ?? null,
+        cep:              perfil?.cep              ?? null,
+        responsabilidades: perfil?.responsabilidades ?? null,
       }
     })
   )

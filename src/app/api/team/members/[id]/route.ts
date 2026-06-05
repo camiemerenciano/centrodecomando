@@ -20,18 +20,41 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   if (!link) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { cargo, telefone, endereco, remuneracao, data_entrada, aniversario, parent_id } = await req.json()
+  const body = await req.json()
 
-  const { error } = await admin.from('perfis').upsert({
+  const fields: Record<string, unknown> = {
     id,
-    cargo:        cargo        || null,
-    telefone:     telefone     || null,
-    endereco:     endereco     || null,
-    remuneracao:  remuneracao  ?? null,
-    data_entrada: data_entrada || null,
-    aniversario:  aniversario  || null,
-    parent_id:    parent_id !== undefined ? (parent_id || null) : undefined,
-  }, { onConflict: 'id' })
+    cargo:            body.cargo            || null,
+    telefone:         body.telefone         || null,
+    endereco:         body.endereco         || null,
+    remuneracao:      body.remuneracao      ?? null,
+    data_entrada:     body.data_entrada     || null,
+    aniversario:      body.aniversario      || null,
+    parent_id:        body.parent_id !== undefined ? (body.parent_id || null) : undefined,
+    // Dados da empresa
+    razao_social:     body.razao_social     || null,
+    nome_fantasia:    body.nome_fantasia    || null,
+    cnpj:             body.cnpj             || null,
+    endereco_empresa: body.endereco_empresa || null,
+    cep_empresa:      body.cep_empresa      || null,
+    telefone_empresa: body.telefone_empresa || null,
+    email_empresa:    body.email_empresa    || null,
+    // Pagamento
+    dados_pagamento:  body.dados_pagamento  || null,
+    valor_pagamento:  body.valor_pagamento  ?? null,
+    data_pagamento:   body.data_pagamento   || null,
+    // Pessoal
+    rg:               body.rg               || null,
+    cpf:              body.cpf              || null,
+    cep:              body.cep              || null,
+    // Responsabilidades
+    responsabilidades: body.responsabilidades || null,
+  }
+
+  // Remove undefined values
+  Object.keys(fields).forEach(k => fields[k] === undefined && delete fields[k])
+
+  const { error } = await admin.from('perfis').upsert(fields, { onConflict: 'id' })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
