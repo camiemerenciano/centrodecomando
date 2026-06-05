@@ -278,6 +278,18 @@ function AcaoForm({ acao, projetoId, defaultStatus, acoes, onSave, onClose }: {
 
   async function handleSave() {
     if (!titulo.trim()) { setError('Título obrigatório'); return }
+
+    if (status !== 'fazer' && dependencias.length > 0) {
+      const blockers = dependencias
+        .map(depId => acoes.find(a => a.id === depId))
+        .filter((a): a is Acao => !!a && a.status !== 'feito')
+        .map(a => a.titulo)
+      if (blockers.length > 0) {
+        setError(`Bloqueada. Conclua primeiro: ${blockers.join(', ')}`)
+        return
+      }
+    }
+
     setSaving(true)
     const payload = {
       projeto_id: projetoId, titulo: titulo.trim(),
