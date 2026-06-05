@@ -4,7 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Orbit™",
+  title: "Centro de Comando™",
   description: "Central operacional inteligente para agências de marketing",
 }
 
