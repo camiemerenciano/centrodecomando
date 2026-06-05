@@ -8,7 +8,7 @@ import {
   XCircle, Loader2, ChevronLeft, GripVertical, User,
   AlertCircle, MoreHorizontal, Circle, ArrowRight, Check,
   ExternalLink, Link2, FileText, Target, TrendingUp, TrendingDown,
-  Copy, BarChart3, Info,
+  Copy, BarChart3, Info, Lock,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -36,6 +36,7 @@ interface Acao {
   titulo: string; descricao: string; responsavel: string
   prazo: string | null; prioridade: Priority
   status: AcaoStatus; ordem: number; created_at: string
+  dependencias: string[]
 }
 
 interface Custo {
@@ -249,10 +250,11 @@ function ProjetoForm({ initial, clientNames, onSave, onClose, saving }: {
 
 // ─── Acao Form ────────────────────────────────────────────────────────────────
 
-function AcaoForm({ acao, projetoId, defaultStatus, onSave, onClose }: {
+function AcaoForm({ acao, projetoId, defaultStatus, acoes, onSave, onClose }: {
   acao: Acao | null
   projetoId: string
   defaultStatus: AcaoStatus
+  acoes: Acao[]
   onSave: () => void
   onClose: () => void
 }) {
@@ -264,8 +266,15 @@ function AcaoForm({ acao, projetoId, defaultStatus, onSave, onClose }: {
   const [prazo, setPrazo]             = useState(acao?.prazo ?? '')
   const [prioridade, setPrioridade]   = useState<Priority>(acao?.prioridade ?? 'medium')
   const [status, setStatus]           = useState<AcaoStatus>(acao?.status ?? defaultStatus)
+  const [dependencias, setDependencias] = useState<string[]>(acao?.dependencias ?? [])
   const [saving, setSaving]           = useState(false)
   const [error, setError]             = useState('')
+
+  const outrasAcoes = acoes.filter(a => a.id !== acao?.id)
+
+  function toggleDep(id: string, checked: boolean) {
+    setDependencias(prev => checked ? [...prev, id] : prev.filter(d => d !== id))
+  }
 
   async function handleSave() {
     if (!titulo.trim()) { setError('Título obrigatório'); return }
@@ -275,10 +284,20 @@ function AcaoForm({ acao, projetoId, defaultStatus, onSave, onClose }: {
       descricao: descricao.trim(), responsavel: responsavel.trim(),
       prazo: prazo || null, prioridade, status,
     }
-    const { error: err } = isEdit
-      ? await supabase.from('projeto_acoes').update(payload).eq('id', acao!.id)
-      : await supabase.from('projeto_acoes').insert(payload)
+    const { data: saved, error: err } = isEdit
+      ? await supabase.from('projeto_acoes').update(payload).eq('id', acao!.id).select('id').single()
+      : await supabase.from('projeto_acoes').insert(payload).select('id').single()
     if (err) { setError(err.message); setSaving(false); return }
+
+    const acaoId = saved?.id ?? acao?.id
+    if (acaoId) {
+      await supabase.from('projeto_acao_dependencias').delete().eq('acao_id', acaoId)
+      if (dependencias.length > 0) {
+        await supabase.from('projeto_acao_dependencias').insert(
+          dependencias.map(depId => ({ acao_id: acaoId, depende_de_id: depId }))
+        )
+      }
+    }
     onSave()
   }
 
@@ -339,6 +358,36 @@ function AcaoForm({ acao, projetoId, defaultStatus, onSave, onClose }: {
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Prazo</label>
             <input type="date" value={prazo} onChange={e => setPrazo(e.target.value)} className={ainp} />
           </div>
+
+          {outrasAcoes.length > 0 && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5 block">
+                <Lock size={10} className="text-amber-400" />
+                Bloqueada por (depende de)
+              </label>
+              <div className="max-h-44 overflow-y-auto rounded-xl border border-border bg-muted/50 divide-y divide-border/50">
+                {outrasAcoes.map(a => {
+                  const checked = dependencias.includes(a.id)
+                  const done    = a.status === 'feito'
+                  return (
+                    <label key={a.id} className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-muted/60 transition-colors">
+                      <input type="checkbox" checked={checked} onChange={e => toggleDep(a.id, e.target.checked)} className="accent-primary shrink-0" />
+                      <span className={`text-xs truncate flex-1 ${done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                        {a.titulo}
+                      </span>
+                      {done
+                        ? <Check size={11} className="text-emerald-400 shrink-0" />
+                        : <Circle size={11} className="text-muted-foreground/40 shrink-0" />
+                      }
+                    </label>
+                  )
+                })}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                Esta ação não poderá avançar enquanto as selecionadas não forem concluídas.
+              </p>
+            </div>
+          )}
         </div>
         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
           <button onClick={onClose} className="h-10 px-4 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">Cancelar</button>
@@ -354,8 +403,9 @@ function AcaoForm({ acao, projetoId, defaultStatus, onSave, onClose }: {
 
 // ─── Acao Card ────────────────────────────────────────────────────────────────
 
-function AcaoCard({ acao, onEdit, onDelete, onDragStart, onDragEnd }: {
+function AcaoCard({ acao, blockerTitles, onEdit, onDelete, onDragStart, onDragEnd }: {
   acao: Acao
+  blockerTitles: string[]
   onEdit: () => void
   onDelete: () => void
   onDragStart: () => void
@@ -364,7 +414,8 @@ function AcaoCard({ acao, onEdit, onDelete, onDragStart, onDragEnd }: {
   const [menu, setMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const pCfg = PRIORITY_CFG[acao.prioridade]
-  const isOverdue = acao.prazo && new Date(acao.prazo) < new Date() && acao.status !== 'feito'
+  const isOverdue  = acao.prazo && new Date(acao.prazo) < new Date() && acao.status !== 'feito'
+  const isBlocked  = blockerTitles.length > 0
 
   useEffect(() => {
     if (!menu) return
@@ -411,6 +462,13 @@ function AcaoCard({ acao, onEdit, onDelete, onDragStart, onDragEnd }: {
             <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed line-clamp-2">{acao.descricao}</p>
           )}
 
+          {isBlocked && (
+            <div className="flex items-center gap-1.5 mt-2 bg-amber-400/10 border border-amber-400/20 rounded-lg px-2 py-1.5">
+              <Lock size={10} className="text-amber-400 shrink-0" />
+              <span className="text-[10px] text-amber-400 truncate">Aguarda: {blockerTitles.join(', ')}</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between mt-2 gap-2">
             <div className="flex items-center gap-2">
               <span className={`w-1.5 h-1.5 rounded-full ${pCfg.dot}`} title={pCfg.label} />
@@ -443,13 +501,29 @@ function KanbanBoard({ projetoId }: { projetoId: string }) {
   const [defaultStatus, setDefaultStatus] = useState<AcaoStatus>('fazer')
   const [dragging, setDragging]         = useState<Acao | null>(null)
   const [overCol, setOverCol]           = useState<AcaoStatus | null>(null)
+  const [blockedMsg, setBlockedMsg]     = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
+    const { data: acoesData } = await supabase
       .from('projeto_acoes').select('*')
       .eq('projeto_id', projetoId).order('ordem')
-    if (data) setAcoes(data as Acao[])
+
+    if (!acoesData) { setLoading(false); return }
+
+    const ids = acoesData.map(a => a.id)
+    const { data: depsData } = ids.length > 0
+      ? await supabase.from('projeto_acao_dependencias').select('acao_id, depende_de_id').in('acao_id', ids)
+      : { data: [] }
+
+    const depMap = new Map<string, string[]>()
+    for (const dep of depsData ?? []) {
+      const arr = depMap.get(dep.acao_id) ?? []
+      arr.push(dep.depende_de_id)
+      depMap.set(dep.acao_id, arr)
+    }
+
+    setAcoes(acoesData.map(a => ({ ...a, dependencias: depMap.get(a.id) ?? [] })) as Acao[])
     setLoading(false)
   }, [supabase, projetoId])
 
@@ -465,6 +539,20 @@ function KanbanBoard({ projetoId }: { projetoId: string }) {
     if (!dragging || dragging.status === targetStatus) {
       setDragging(null); setOverCol(null); return
     }
+
+    if (targetStatus !== 'fazer') {
+      const blockers = (dragging.dependencias ?? [])
+        .map(id => acoes.find(a => a.id === id))
+        .filter((a): a is Acao => !!a && a.status !== 'feito')
+        .map(a => a.titulo)
+      if (blockers.length > 0) {
+        setBlockedMsg(`"${dragging.titulo}" está bloqueada. Conclua primeiro: ${blockers.join(', ')}`)
+        setDragging(null); setOverCol(null)
+        setTimeout(() => setBlockedMsg(null), 6000)
+        return
+      }
+    }
+
     await supabase.from('projeto_acoes').update({ status: targetStatus }).eq('id', dragging.id)
     setAcoes(prev => prev.map(a => a.id === dragging.id ? { ...a, status: targetStatus } : a))
     setDragging(null); setOverCol(null)
@@ -472,6 +560,13 @@ function KanbanBoard({ projetoId }: { projetoId: string }) {
 
   function openNew(status: AcaoStatus) {
     setDefaultStatus(status); setEditingAcao(null); setFormOpen(true)
+  }
+
+  function getBlockerTitles(acao: Acao): string[] {
+    return (acao.dependencias ?? [])
+      .map(id => acoes.find(a => a.id === id))
+      .filter((a): a is Acao => !!a && a.status !== 'feito')
+      .map(a => a.titulo)
   }
 
   const byStatus = (s: AcaoStatus) => acoes.filter(a => a.status === s)
@@ -485,6 +580,16 @@ function KanbanBoard({ projetoId }: { projetoId: string }) {
           <Plus size={13} /> Nova ação
         </button>
       </div>
+
+      {blockedMsg && (
+        <div className="flex items-center gap-2.5 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3">
+          <Lock size={14} className="text-amber-400 shrink-0" />
+          <p className="text-sm text-amber-400 flex-1">{blockedMsg}</p>
+          <button onClick={() => setBlockedMsg(null)} className="text-amber-400/60 hover:text-amber-400 transition-colors">
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-10">
@@ -517,6 +622,7 @@ function KanbanBoard({ projetoId }: { projetoId: string }) {
                 <div className="flex-1 p-2 space-y-2">
                   {items.map(a => (
                     <AcaoCard key={a.id} acao={a}
+                      blockerTitles={getBlockerTitles(a)}
                       onEdit={() => { setEditingAcao(a); setFormOpen(true) }}
                       onDelete={() => handleDelete(a.id)}
                       onDragStart={() => setDragging(a)}
@@ -540,7 +646,7 @@ function KanbanBoard({ projetoId }: { projetoId: string }) {
       )}
 
       {formOpen && (
-        <AcaoForm acao={editingAcao} projetoId={projetoId} defaultStatus={defaultStatus}
+        <AcaoForm acao={editingAcao} projetoId={projetoId} defaultStatus={defaultStatus} acoes={acoes}
           onSave={() => { setFormOpen(false); setEditingAcao(null); load() }}
           onClose={() => { setFormOpen(false); setEditingAcao(null) }}
         />

@@ -113,7 +113,7 @@ function opStatusToAcao(s: OpStatus): AcaoStatus {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function fromAcao(r: any, projetoNome: string | null): OpTask {
+function fromAcao(r: any, projetoNome: string | null, deps: string[] = []): OpTask {
   const nome: string = r.responsavel ?? ''
   return {
     id:                 r.id,
@@ -130,7 +130,7 @@ function fromAcao(r: any, projetoNome: string | null): OpTask {
     createdAt:          r.created_at ?? new Date().toISOString(),
     projetoId:          r.projeto_id ?? null,
     projetoNome,
-    dependencias:       [],
+    dependencias:       deps,
     source:             'acao',
   }
 }
@@ -931,17 +931,32 @@ export function TarefasModule() {
         return t
       })
 
-      // Load projeto_acoes for all accessible projetos
+      // Load projeto_acoes and their dependencies for all accessible projetos
       let acoesTasks: OpTask[] = []
       if (projetosData.length > 0) {
         const { data: acoesData } = await supabase
           .from('projeto_acoes')
           .select('*, projetos(nome)')
           .in('projeto_id', projetosData.map((p: Projeto) => p.id))
-        acoesTasks = (acoesData ?? []).map((r: Record<string, unknown>) =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          fromAcao(r, (r.projetos as any)?.nome ?? null)
-        )
+
+        if (acoesData && acoesData.length > 0) {
+          const { data: acaoDepsData } = await supabase
+            .from('projeto_acao_dependencias')
+            .select('acao_id, depende_de_id')
+            .in('acao_id', acoesData.map(a => a.id))
+
+          const acaoDepMap = new Map<string, string[]>()
+          for (const dep of acaoDepsData ?? []) {
+            const arr = acaoDepMap.get(dep.acao_id) ?? []
+            arr.push(dep.depende_de_id)
+            acaoDepMap.set(dep.acao_id, arr)
+          }
+
+          acoesTasks = acoesData.map((r: Record<string, unknown>) =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            fromAcao(r, (r.projetos as any)?.nome ?? null, acaoDepMap.get(r.id as string) ?? [])
+          )
+        }
       }
 
       setTasks([...tarefasTasks, ...acoesTasks])
