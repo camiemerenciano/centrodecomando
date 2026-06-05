@@ -531,9 +531,39 @@ function ProcessoDetail({
                         <ChevronRight size={14} className="text-muted-foreground/40 group-hover/etapa:text-primary shrink-0 mt-1 transition-colors" />
                       </div>
 
-                      {etapa.descricao && (
-                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed line-clamp-2">{etapa.descricao}</p>
-                      )}
+                      {/* Checklist preview — itens individuais */}
+                      {(etapa.checklist ?? []).length > 0 ? (
+                        <div className="mt-2 space-y-1">
+                          {(etapa.checklist ?? []).slice(0, 4).map((item) => (
+                            <div key={item.id} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                              {item.concluido
+                                ? <CheckCircle2 size={10} className="text-emerald-400 shrink-0" />
+                                : <div className="w-2.5 h-2.5 rounded border border-border shrink-0" />
+                              }
+                              <span className={item.concluido ? 'line-through opacity-50' : ''}>{item.texto}</span>
+                            </div>
+                          ))}
+                          {(etapa.checklist ?? []).length > 4 && (
+                            <p className="text-[11px] text-muted-foreground/40 pl-4">
+                              +{(etapa.checklist ?? []).length - 4} itens
+                            </p>
+                          )}
+                        </div>
+                      ) : etapa.descricao ? (
+                        <div className="mt-1.5 space-y-0.5">
+                          {etapa.descricao.split(/\n| - /).filter(s => s.trim()).slice(0, 4).map((line, idx) => (
+                            <div key={idx} className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                              <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30 shrink-0 mt-1" />
+                              <span>{line.trim()}</span>
+                            </div>
+                          ))}
+                          {etapa.descricao.split(/\n| - /).filter(s => s.trim()).length > 4 && (
+                            <p className="text-[11px] text-muted-foreground/40 pl-3">
+                              +{etapa.descricao.split(/\n| - /).filter(s => s.trim()).length - 4} mais
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
 
                       <div className="flex items-center gap-3 mt-2 flex-wrap">
                         {etapa.responsavel && (
