@@ -37,6 +37,7 @@ interface OpTask {
   projetoId: string | null
   projetoNome: string | null
   dependencias: string[]
+  source: 'tarefa' | 'acao'
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -93,6 +94,44 @@ function fromRow(r: any, deps: string[] = []): OpTask {
     projetoId:          r.projeto_id ?? null,
     projetoNome:        r.projetos?.nome ?? null,
     dependencias:       deps,
+    source:             'tarefa',
+  }
+}
+
+type AcaoStatus = 'fazer' | 'fazendo' | 'feito'
+
+function acaoToOpStatus(s: AcaoStatus): OpStatus {
+  if (s === 'feito')   return 'concluido'
+  if (s === 'fazendo') return 'em_andamento'
+  return 'nao_iniciado'
+}
+
+function opStatusToAcao(s: OpStatus): AcaoStatus {
+  if (s === 'concluido' || s === 'arquivado')           return 'feito'
+  if (s === 'em_andamento' || s === 'follow_up')        return 'fazendo'
+  return 'fazer'
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fromAcao(r: any, projetoNome: string | null): OpTask {
+  const nome: string = r.responsavel ?? ''
+  return {
+    id:                 r.id,
+    title:              r.titulo ?? '',
+    description:        r.descricao ?? '',
+    client:             '',
+    assignee:           nome,
+    assigneeInitials:   nome.split(' ').slice(0, 2).map((n: string) => n[0] ?? '').join('').toUpperCase(),
+    assigneeId:         null,
+    dueDate:            r.prazo ?? '',
+    priority:           (r.prioridade ?? 'medium') as Priority,
+    status:             acaoToOpStatus((r.status ?? 'fazer') as AcaoStatus),
+    conversationOrigin: null,
+    createdAt:          r.created_at ?? new Date().toISOString(),
+    projetoId:          r.projeto_id ?? null,
+    projetoNome,
+    dependencias:       [],
+    source:             'acao',
   }
 }
 
@@ -379,7 +418,9 @@ function TaskCard({
       {task.projetoNome && (
         <div className="flex items-center gap-1">
           <FolderOpen size={9} className="text-violet-400 shrink-0" />
-          <span className="text-[10px] text-violet-400 truncate">{task.projetoNome}</span>
+          <span className="text-[10px] text-violet-400 truncate">
+            {task.projetoNome}{task.source === 'acao' ? ' · Plano de ação' : ''}
+          </span>
         </div>
       )}
 
@@ -423,6 +464,144 @@ function TaskCard({
         </>
       )}
     </div>
+  )
+}
+
+// ─── AcaoFormPanel ───────────────────────────────────────────────────────────
+
+const ACAO_STATUS_OPTS: { value: OpStatus; label: string }[] = [
+  { value: 'nao_iniciado', label: 'A fazer'      },
+  { value: 'em_andamento', label: 'Fazendo'      },
+  { value: 'concluido',    label: 'Feito'         },
+]
+
+function AcaoFormPanel({
+  task, onSave, onClose, onDelete,
+}: {
+  task: Partial<OpTask> | null
+  onSave: (t: OpTask) => void
+  onClose: () => void
+  onDelete?: (id: string) => void
+}) {
+  const isEdit = !!task?.id
+  const [form, setForm] = useState<Partial<OpTask>>({
+    title: '', description: '', assignee: '', assigneeInitials: '',
+    assigneeId: null, dueDate: '', priority: 'medium', status: 'nao_iniciado',
+    projetoId: null, projetoNome: null, dependencias: [], source: 'acao',
+    ...task,
+  })
+
+  const lbl = 'block text-[11px] font-medium text-muted-foreground mb-1.5 uppercase tracking-wide'
+  const inp = 'w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all'
+
+  function field<K extends keyof OpTask>(key: K) {
+    return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      setForm(p => ({ ...p, [key]: e.target.value }))
+    }
+  }
+
+  function save() {
+    if (!form.title?.trim()) return
+    onSave({
+      id:                 task?.id ?? '',
+      title:              form.title ?? '',
+      description:        form.description ?? '',
+      client:             '',
+      assignee:           form.assignee ?? '',
+      assigneeInitials:   (form.assignee ?? '').split(' ').slice(0,2).map(n => n[0] ?? '').join('').toUpperCase(),
+      assigneeId:         null,
+      dueDate:            form.dueDate ?? '',
+      priority:           (form.priority ?? 'medium') as Priority,
+      status:             (form.status ?? 'nao_iniciado') as OpStatus,
+      conversationOrigin: null,
+      createdAt:          task?.createdAt ?? new Date().toISOString(),
+      projetoId:          task?.projetoId ?? null,
+      projetoNome:        task?.projetoNome ?? null,
+      dependencias:       [],
+      source:             'acao',
+    })
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-background border-l border-border z-50 flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">{isEdit ? 'Editar ação' : 'Nova ação'}</h2>
+            {task?.projetoNome && (
+              <p className="text-[11px] text-violet-400 mt-0.5 flex items-center gap-1">
+                <FolderOpen size={10} /> {task.projetoNome} · Plano de ação
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X size={16} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          <div>
+            <label className={lbl}>Título <span className="text-destructive">*</span></label>
+            <input value={form.title ?? ''} onChange={field('title')} placeholder="Título da ação..." className={inp} autoFocus />
+          </div>
+
+          <div>
+            <label className={lbl}>Descrição</label>
+            <textarea rows={3} value={form.description ?? ''} onChange={field('description')} placeholder="Detalhes..." className={inp + ' h-auto resize-none py-2'} />
+          </div>
+
+          <div>
+            <label className={lbl}>Responsável</label>
+            <input value={form.assignee ?? ''} onChange={field('assignee')} placeholder="Nome do responsável..." className={inp} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Prazo</label>
+              <input type="date" value={form.dueDate ?? ''} onChange={field('dueDate')} className={inp + ' cursor-pointer'} />
+            </div>
+            <div>
+              <label className={lbl}>Prioridade</label>
+              <div className="relative">
+                <select value={form.priority} onChange={field('priority')} className={inp + ' cursor-pointer appearance-none pr-7'}>
+                  <option value="urgent">🔴 Urgente</option>
+                  <option value="high">🟠 Alta</option>
+                  <option value="medium">🔵 Média</option>
+                  <option value="low">⚪ Baixa</option>
+                </select>
+                <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className={lbl}>Status</label>
+            <div className="relative">
+              <select value={form.status} onChange={field('status')} className={inp + ' cursor-pointer appearance-none pr-7'}>
+                {ACAO_STATUS_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 border-t border-border flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancelar</button>
+            {isEdit && onDelete && (
+              <button
+                onClick={() => { onDelete(task!.id!); onClose() }}
+                className="flex items-center gap-1.5 text-xs text-destructive hover:text-destructive/80 transition-colors"
+              >
+                <Trash2 size={12} /> Excluir
+              </button>
+            )}
+          </div>
+          <Button size="sm" onClick={save} disabled={!form.title?.trim()} className="h-8 bg-primary hover:bg-primary/90 text-xs gap-1.5">
+            {isEdit ? <><Pencil size={12} /> Salvar alterações</> : <><Plus size={12} /> Criar ação</>}
+          </Button>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -511,6 +690,7 @@ function TaskFormPanel({
       projetoId:          form.projetoId ?? null,
       projetoNome:        form.projetoNome ?? null,
       dependencias:       form.dependencias ?? [],
+      source:             'tarefa',
     })
   }
 
@@ -745,11 +925,26 @@ export function TarefasModule() {
         depMap.set(dep.tarefa_id, arr)
       }
 
-      if (tarefasData) setTasks(tarefasData.map(r => {
+      const tarefasTasks: OpTask[] = (tarefasData ?? []).map(r => {
         const t = fromRow(r, depMap.get(r.id) ?? [])
         if (t.projetoId) t.projetoNome = projMap.get(t.projetoId) ?? null
         return t
-      }))
+      })
+
+      // Load projeto_acoes for all accessible projetos
+      let acoesTasks: OpTask[] = []
+      if (projetosData.length > 0) {
+        const { data: acoesData } = await supabase
+          .from('projeto_acoes')
+          .select('*, projetos(nome)')
+          .in('projeto_id', projetosData.map((p: Projeto) => p.id))
+        acoesTasks = (acoesData ?? []).map((r: Record<string, unknown>) =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          fromAcao(r, (r.projetos as any)?.nome ?? null)
+        )
+      }
+
+      setTasks([...tarefasTasks, ...acoesTasks])
       if (clientesData) setClientNames(clientesData.map((c: { name: string }) => c.name).filter(Boolean))
     }
     load()
@@ -792,6 +987,24 @@ export function TarefasModule() {
 
   async function handleSave(task: OpTask) {
     if (!userId) return
+
+    // Branch: acao items (from projeto_acoes) — edit only, no create
+    if (task.source === 'acao') {
+      const row = {
+        titulo:      task.title,
+        descricao:   task.description,
+        responsavel: task.assignee,
+        prazo:       task.dueDate || null,
+        prioridade:  task.priority,
+        status:      opStatusToAcao(task.status),
+      }
+      await supabase.from('projeto_acoes').update(row).eq('id', task.id)
+      setTasks(prev => prev.map(t => t.id === task.id ? task : t))
+      setShowForm(false)
+      return
+    }
+
+    // Regular tarefa
     const row = {
       user_id:            userId,
       empresa_id:         empresaId || null,
@@ -836,7 +1049,12 @@ export function TarefasModule() {
   }
 
   async function handleDelete(id: string) {
-    await supabase.from('tarefas').delete().eq('id', id)
+    const task = tasks.find(t => t.id === id)
+    if (task?.source === 'acao') {
+      await supabase.from('projeto_acoes').delete().eq('id', id)
+    } else {
+      await supabase.from('tarefas').delete().eq('id', id)
+    }
     setTasks(prev => prev.filter(t => t.id !== id))
   }
 
@@ -856,7 +1074,11 @@ export function TarefasModule() {
     }
 
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t))
-    await supabase.from('tarefas').update({ status: newStatus }).eq('id', id)
+    if (task.source === 'acao') {
+      await supabase.from('projeto_acoes').update({ status: opStatusToAcao(newStatus) }).eq('id', id)
+    } else {
+      await supabase.from('tarefas').update({ status: newStatus }).eq('id', id)
+    }
   }
 
   const sel = 'h-8 rounded-lg bg-muted border border-border px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer transition-all'
@@ -1062,7 +1284,14 @@ export function TarefasModule() {
         <GanttView tasks={filtered} allTasks={tasks} onEdit={openEdit} />
       )}
 
-      {showForm && (
+      {showForm && editTask?.source === 'acao' ? (
+        <AcaoFormPanel
+          task={editTask}
+          onSave={handleSave}
+          onClose={() => setShowForm(false)}
+          onDelete={id => { handleDelete(id); setShowForm(false) }}
+        />
+      ) : showForm ? (
         <TaskFormPanel
           task={editTask}
           onSave={handleSave}
@@ -1073,7 +1302,7 @@ export function TarefasModule() {
           projetos={projetos}
           allTasks={tasks}
         />
-      )}
+      ) : null}
     </div>
   )
 }
