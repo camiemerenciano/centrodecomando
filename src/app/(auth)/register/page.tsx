@@ -114,7 +114,7 @@ export default function RegisterPage() {
         <p className="text-sm text-muted-foreground leading-relaxed">
           Enviamos um link de confirmação para{' '}
           <span className="text-foreground font-medium">{form.email}</span>.
-          Clique no link para ativar sua conta e acessar o Orbit™.
+          Clique no link para ativar sua conta e acessar o Centro de Comando™.
         </p>
         <p className="text-xs text-muted-foreground">Não recebeu? Verifique a caixa de spam.</p>
         <Link href="/login" className="inline-block text-sm text-primary hover:text-primary/80 font-medium transition-colors">

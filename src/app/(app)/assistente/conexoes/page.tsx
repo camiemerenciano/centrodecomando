@@ -232,7 +232,7 @@ function GoogleCalendarCard() {
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground leading-relaxed">
           Sincronize eventos e prazos com o Google Agenda. Postagens, reuniões e
-          deadlines aparecem automaticamente no Calendário do Orbit™.
+          deadlines aparecem automaticamente no Calendário do Centro de Comando™.
         </p>
 
         {status === 'connecting' && (
