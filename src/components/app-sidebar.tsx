@@ -63,6 +63,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: '/projetos',   label: 'Projetos',   icon: FolderOpen },
       { href: '/tarefas',    label: 'Tarefas',    icon: CheckSquare },
       { href: '/calendario', label: 'Calendário', icon: Calendar },
+      { href: '/processos',  label: 'Processos',  icon: BookOpen },
     ],
   },
   {
@@ -77,7 +78,6 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: '/financeiro',  label: 'Financeiro',  icon: TrendingUp },
       { href: '/equipe',      label: 'Equipe',      icon: UsersRound },
       { href: '/documentos',  label: 'Documentos',  icon: Files },
-      { href: '/processos',   label: 'Processos',   icon: BookOpen },
     ],
   },
   {
