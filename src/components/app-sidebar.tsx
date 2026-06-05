@@ -83,6 +83,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Administração',
     items: [
+      { href: '/estrutura',     label: 'Estrutura',      icon: Building2 },
       { href: '/membros',       label: 'Membros',        icon: Users,    roleRequired: 'superadmin' },
       { href: '/configuracoes', label: 'Configurações',  icon: Settings },
     ],

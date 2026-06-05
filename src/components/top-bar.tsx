@@ -15,6 +15,7 @@ const titles: Record<string, { label: string; sub: string }> = {
   '/chat':       { label: 'Chat Interno',          sub: 'Comunicação da equipe'         },
   '/perfil':         { label: 'Perfil',         sub: 'Atualize seus dados pessoais e credenciais de acesso' },
   '/configuracoes':  { label: 'Configurações',  sub: 'Preferências da plataforma' },
+  '/estrutura':      { label: 'Estrutura',      sub: 'Identidade e dados da empresa' },
   '/agencias':       { label: 'Agências',       sub: 'Gerenciar acessos à plataforma' },
 }
 
