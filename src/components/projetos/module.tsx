@@ -7,6 +7,8 @@ import {
   FolderKanban, Clock, Layers, CheckCircle2, PauseCircle,
   XCircle, Loader2, ChevronLeft, GripVertical, User,
   AlertCircle, MoreHorizontal, Circle, ArrowRight, Check,
+  ExternalLink, Link2, FileText, Target, TrendingUp, TrendingDown,
+  Copy, BarChart3, Info,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,9 +17,12 @@ import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type ProjStatus   = 'ativo' | 'pausado' | 'concluido' | 'cancelado'
-type Priority     = 'low' | 'medium' | 'high' | 'urgent'
-type AcaoStatus   = 'fazer' | 'fazendo' | 'feito'
+type ProjStatus = 'ativo' | 'pausado' | 'concluido' | 'cancelado'
+type Priority   = 'low' | 'medium' | 'high' | 'urgent'
+type AcaoStatus = 'fazer' | 'fazendo' | 'feito'
+type MetaStatus = 'em_andamento' | 'atingida' | 'nao_atingida'
+type CusTipo    = 'entrada' | 'saida'
+type ProjetoTab = 'sobre' | 'planejamento' | 'custos' | 'metas' | 'links' | 'relatorios'
 
 interface Projeto {
   id: string; nome: string; descricao: string; cliente: string
@@ -33,13 +38,39 @@ interface Acao {
   status: AcaoStatus; ordem: number; created_at: string
 }
 
+interface Custo {
+  id: string; projeto_id: string
+  descricao: string; categoria: string
+  valor: number; tipo: CusTipo
+  data: string | null; created_at: string
+}
+
+interface Meta {
+  id: string; projeto_id: string
+  titulo: string; descricao: string
+  valor_meta: number | null; valor_atual: number | null; unidade: string
+  status: MetaStatus; created_at: string
+}
+
+interface ProjetoLink {
+  id: string; projeto_id: string
+  titulo: string; url: string; categoria: string
+  created_at: string
+}
+
+interface Relatorio {
+  id: string; projeto_id: string
+  titulo: string; conteudo: string
+  data_referencia: string | null; created_at: string
+}
+
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const STATUS_CFG: Record<ProjStatus, { label: string; cls: string; icon: React.ReactNode }> = {
-  ativo:     { label: 'Ativo',     cls: 'bg-emerald-500/15 text-emerald-400 border-0', icon: <Layers size={10} />      },
-  pausado:   { label: 'Pausado',   cls: 'bg-amber-500/15 text-amber-400 border-0',     icon: <PauseCircle size={10} /> },
+  ativo:     { label: 'Ativo',     cls: 'bg-emerald-500/15 text-emerald-400 border-0', icon: <Layers size={10} />       },
+  pausado:   { label: 'Pausado',   cls: 'bg-amber-500/15 text-amber-400 border-0',     icon: <PauseCircle size={10} />  },
   concluido: { label: 'Concluído', cls: 'bg-sky-500/15 text-sky-400 border-0',         icon: <CheckCircle2 size={10} /> },
-  cancelado: { label: 'Cancelado', cls: 'bg-red-500/15 text-red-400 border-0',         icon: <XCircle size={10} />     },
+  cancelado: { label: 'Cancelado', cls: 'bg-red-500/15 text-red-400 border-0',         icon: <XCircle size={10} />      },
 }
 
 const PRIORITY_CFG: Record<Priority, { label: string; dot: string; color: string }> = {
@@ -49,10 +80,25 @@ const PRIORITY_CFG: Record<Priority, { label: string; dot: string; color: string
   low:    { label: 'Baixa',   dot: 'bg-muted-foreground', color: 'text-muted-foreground' },
 }
 
+const META_STATUS_CFG: Record<MetaStatus, { label: string; cls: string }> = {
+  em_andamento: { label: 'Em andamento', cls: 'bg-amber-500/15 text-amber-400 border-0'   },
+  atingida:     { label: 'Atingida',     cls: 'bg-emerald-500/15 text-emerald-400 border-0' },
+  nao_atingida: { label: 'Não atingida', cls: 'bg-red-500/15 text-red-400 border-0'         },
+}
+
 const ACAO_COLS: { id: AcaoStatus; label: string; icon: React.ReactNode; color: string; bg: string; border: string }[] = [
   { id: 'fazer',   label: 'Fazer',   icon: <Circle size={12} />,    color: 'text-slate-400',   bg: 'bg-slate-400/8',   border: 'border-slate-400/20' },
   { id: 'fazendo', label: 'Fazendo', icon: <ArrowRight size={12} />, color: 'text-amber-400',  bg: 'bg-amber-400/8',   border: 'border-amber-400/20' },
   { id: 'feito',   label: 'Feito',   icon: <Check size={12} />,     color: 'text-emerald-400', bg: 'bg-emerald-400/8', border: 'border-emerald-400/20' },
+]
+
+const PROJETO_TABS: { id: ProjetoTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'sobre',        label: 'Sobre o Projeto',  icon: <Info size={12} />        },
+  { id: 'planejamento', label: 'Plano de Ação',    icon: <Layers size={12} />      },
+  { id: 'custos',       label: 'Custos',           icon: <BarChart3 size={12} />   },
+  { id: 'metas',        label: 'Metas',            icon: <Target size={12} />      },
+  { id: 'links',        label: 'Links',            icon: <Link2 size={12} />       },
+  { id: 'relatorios',   label: 'Relatórios',       icon: <FileText size={12} />    },
 ]
 
 const CORES = [
@@ -69,6 +115,10 @@ function fmtDate(d: string | null) {
   return `${day}/${m}/${y}`
 }
 
+function fmtCurrency(v: number) {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
 function progressPct(inicio: string | null, fim: string | null): number | null {
   if (!inicio || !fim) return null
   const s = new Date(inicio).getTime()
@@ -77,6 +127,9 @@ function progressPct(inicio: string | null, fim: string | null): number | null {
   if (e <= s) return null
   return Math.min(100, Math.max(0, Math.round(((now - s) / (e - s)) * 100)))
 }
+
+const inp  = 'w-full h-9 rounded-lg bg-muted border border-border px-3 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30'
+const lbl  = 'text-[11px] text-muted-foreground mb-1 block'
 
 // ─── Project Form ─────────────────────────────────────────────────────────────
 
@@ -103,8 +156,8 @@ function ProjetoForm({ initial, clientNames, onSave, onClose, saving }: {
   })
 
   const sel = 'w-full h-8 rounded-lg bg-muted border border-border px-3 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer appearance-none'
-  const lbl = 'block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5'
-  const inp = 'w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all'
+  const flbl = 'block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5'
+  const finp = 'w-full h-9 rounded-lg bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all'
 
   return (
     <>
@@ -116,7 +169,7 @@ function ProjetoForm({ initial, clientNames, onSave, onClose, saving }: {
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
           <div>
-            <label className={lbl}>Cor</label>
+            <label className={flbl}>Cor</label>
             <div className="flex gap-2 flex-wrap">
               {CORES.map(c => (
                 <button key={c} type="button" onClick={() => setForm(f => ({ ...f, cor: c }))}
@@ -126,18 +179,18 @@ function ProjetoForm({ initial, clientNames, onSave, onClose, saving }: {
             </div>
           </div>
           <div>
-            <label className={lbl}>Nome <span className="text-destructive normal-case">*</span></label>
+            <label className={flbl}>Nome <span className="text-destructive normal-case">*</span></label>
             <input autoFocus value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
-              placeholder="Ex: Campanha de Lançamento" className={inp} />
+              placeholder="Ex: Campanha de Lançamento" className={finp} />
           </div>
           <div>
-            <label className={lbl}>Descrição</label>
+            <label className={flbl}>Descrição</label>
             <textarea value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))}
               placeholder="Objetivos, escopo, observações..." rows={3}
               className="w-full resize-none rounded-lg bg-muted border border-border px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all" />
           </div>
           <div>
-            <label className={lbl}>Cliente</label>
+            <label className={flbl}>Cliente</label>
             <div className="relative">
               <select value={form.cliente} onChange={e => setForm(f => ({ ...f, cliente: e.target.value }))} className={sel}>
                 <option value="">— Sem cliente —</option>
@@ -148,7 +201,7 @@ function ProjetoForm({ initial, clientNames, onSave, onClose, saving }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lbl}>Status</label>
+              <label className={flbl}>Status</label>
               <div className="relative">
                 <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as ProjStatus }))} className={sel}>
                   {(Object.keys(STATUS_CFG) as ProjStatus[]).map(s => <option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
@@ -157,7 +210,7 @@ function ProjetoForm({ initial, clientNames, onSave, onClose, saving }: {
               </div>
             </div>
             <div>
-              <label className={lbl}>Prioridade</label>
+              <label className={flbl}>Prioridade</label>
               <div className="relative">
                 <select value={form.prioridade} onChange={e => setForm(f => ({ ...f, prioridade: e.target.value as Priority }))} className={sel}>
                   <option value="urgent">🔴 Urgente</option>
@@ -171,12 +224,12 @@ function ProjetoForm({ initial, clientNames, onSave, onClose, saving }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lbl}>Início</label>
+              <label className={flbl}>Início</label>
               <input type="date" value={form.data_inicio} onChange={e => setForm(f => ({ ...f, data_inicio: e.target.value }))}
                 className="w-full h-8 rounded-lg bg-muted border border-border px-3 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer" />
             </div>
             <div>
-              <label className={lbl}>Prazo</label>
+              <label className={flbl}>Prazo</label>
               <input type="date" value={form.data_fim} onChange={e => setForm(f => ({ ...f, data_fim: e.target.value }))}
                 className="w-full h-8 rounded-lg bg-muted border border-border px-3 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer" />
             </div>
@@ -194,7 +247,7 @@ function ProjetoForm({ initial, clientNames, onSave, onClose, saving }: {
   )
 }
 
-// ─── Acao Form (side panel) ──────────────────────────────────────────────────
+// ─── Acao Form ────────────────────────────────────────────────────────────────
 
 function AcaoForm({ acao, projetoId, defaultStatus, onSave, onClose }: {
   acao: Acao | null
@@ -229,7 +282,7 @@ function AcaoForm({ acao, projetoId, defaultStatus, onSave, onClose }: {
     onSave()
   }
 
-  const inp = 'w-full h-10 rounded-xl bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30'
+  const ainp = 'w-full h-10 rounded-xl bg-muted border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30'
 
   return (
     <>
@@ -248,7 +301,7 @@ function AcaoForm({ acao, projetoId, defaultStatus, onSave, onClose }: {
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Título *</label>
             <input value={titulo} onChange={e => setTitulo(e.target.value)} autoFocus
-              placeholder="Ex: Criar briefing do projeto" className={inp} />
+              placeholder="Ex: Criar briefing do projeto" className={ainp} />
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Descrição</label>
@@ -284,7 +337,7 @@ function AcaoForm({ acao, projetoId, defaultStatus, onSave, onClose }: {
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Prazo</label>
-            <input type="date" value={prazo} onChange={e => setPrazo(e.target.value)} className={inp} />
+            <input type="date" value={prazo} onChange={e => setPrazo(e.target.value)} className={ainp} />
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
@@ -383,21 +436,19 @@ function AcaoCard({ acao, onEdit, onDelete, onDragStart, onDragEnd }: {
 
 function KanbanBoard({ projetoId }: { projetoId: string }) {
   const supabase = createClient()
-  const [acoes, setAcoes]           = useState<Acao[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [formOpen, setFormOpen]     = useState(false)
-  const [editingAcao, setEditingAcao] = useState<Acao | null>(null)
+  const [acoes, setAcoes]               = useState<Acao[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [formOpen, setFormOpen]         = useState(false)
+  const [editingAcao, setEditingAcao]   = useState<Acao | null>(null)
   const [defaultStatus, setDefaultStatus] = useState<AcaoStatus>('fazer')
-  const [dragging, setDragging]     = useState<Acao | null>(null)
-  const [overCol, setOverCol]       = useState<AcaoStatus | null>(null)
+  const [dragging, setDragging]         = useState<Acao | null>(null)
+  const [overCol, setOverCol]           = useState<AcaoStatus | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     const { data } = await supabase
-      .from('projeto_acoes')
-      .select('*')
-      .eq('projeto_id', projetoId)
-      .order('ordem')
+      .from('projeto_acoes').select('*')
+      .eq('projeto_id', projetoId).order('ordem')
     if (data) setAcoes(data as Acao[])
     setLoading(false)
   }, [supabase, projetoId])
@@ -420,9 +471,7 @@ function KanbanBoard({ projetoId }: { projetoId: string }) {
   }
 
   function openNew(status: AcaoStatus) {
-    setDefaultStatus(status)
-    setEditingAcao(null)
-    setFormOpen(true)
+    setDefaultStatus(status); setEditingAcao(null); setFormOpen(true)
   }
 
   const byStatus = (s: AcaoStatus) => acoes.filter(a => a.status === s)
@@ -454,27 +503,20 @@ function KanbanBoard({ projetoId }: { projetoId: string }) {
                 onDragLeave={() => setOverCol(null)}
                 className={`flex flex-col rounded-xl border transition-all min-h-[200px] ${isOver ? `${col.border} ${col.bg}` : 'border-border bg-muted/20'}`}
               >
-                {/* Column header */}
                 <div className={`flex items-center justify-between px-3 py-2.5 border-b ${isOver ? col.border : 'border-border'}`}>
                   <div className="flex items-center gap-2">
                     <span className={col.color}>{col.icon}</span>
                     <span className={`text-xs font-semibold ${col.color}`}>{col.label}</span>
-                    <span className="text-[10px] text-muted-foreground bg-muted rounded-full px-1.5 py-px">
-                      {items.length}
-                    </span>
+                    <span className="text-[10px] text-muted-foreground bg-muted rounded-full px-1.5 py-px">{items.length}</span>
                   </div>
                   <button onClick={() => openNew(col.id)}
                     className={`w-5 h-5 rounded flex items-center justify-center hover:bg-muted transition-colors ${col.color}`}>
                     <Plus size={12} />
                   </button>
                 </div>
-
-                {/* Cards */}
                 <div className="flex-1 p-2 space-y-2">
                   {items.map(a => (
-                    <AcaoCard
-                      key={a.id}
-                      acao={a}
+                    <AcaoCard key={a.id} acao={a}
                       onEdit={() => { setEditingAcao(a); setFormOpen(true) }}
                       onDelete={() => handleDelete(a.id)}
                       onDragStart={() => setDragging(a)}
@@ -498,13 +540,647 @@ function KanbanBoard({ projetoId }: { projetoId: string }) {
       )}
 
       {formOpen && (
-        <AcaoForm
-          acao={editingAcao}
-          projetoId={projetoId}
-          defaultStatus={defaultStatus}
+        <AcaoForm acao={editingAcao} projetoId={projetoId} defaultStatus={defaultStatus}
           onSave={() => { setFormOpen(false); setEditingAcao(null); load() }}
           onClose={() => { setFormOpen(false); setEditingAcao(null) }}
         />
+      )}
+    </div>
+  )
+}
+
+// ─── SobreTab ─────────────────────────────────────────────────────────────────
+
+function SobreTab({ projeto }: { projeto: Projeto }) {
+  const stCfg = STATUS_CFG[projeto.status]
+  const pCfg  = PRIORITY_CFG[projeto.prioridade]
+
+  return (
+    <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
+      {/* Descrição */}
+      <div>
+        <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Descrição</h3>
+        {projeto.descricao
+          ? <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{projeto.descricao}</p>
+          : <p className="text-sm text-muted-foreground/60 italic">Nenhuma descrição cadastrada.</p>
+        }
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
+        {/* Detalhes */}
+        <div>
+          <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Detalhes</h3>
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground w-20 shrink-0">Status</span>
+              <Badge className={`text-[10px] px-1.5 h-5 flex items-center gap-1 ${stCfg.cls}`}>
+                {stCfg.icon} {stCfg.label}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground w-20 shrink-0">Prioridade</span>
+              <span className={`flex items-center gap-1 text-xs ${pCfg.color}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${pCfg.dot}`} /> {pCfg.label}
+              </span>
+            </div>
+            {projeto.cliente && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground w-20 shrink-0">Cliente</span>
+                <span className="text-xs text-foreground">{projeto.cliente}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Prazo */}
+        <div>
+          <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Prazo</h3>
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground w-20 shrink-0">Início</span>
+              <span className="text-xs text-foreground">{fmtDate(projeto.data_inicio) ?? '—'}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground w-20 shrink-0">Prazo final</span>
+              <span className="text-xs text-foreground">{fmtDate(projeto.data_fim) ?? '—'}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground w-20 shrink-0">Criado em</span>
+              <span className="text-xs text-foreground">{new Date(projeto.created_at).toLocaleDateString('pt-BR')}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── CustosTab ────────────────────────────────────────────────────────────────
+
+function CustosTab({ projetoId }: { projetoId: string }) {
+  const supabase = createClient()
+  const [custos, setCustos]     = useState<Custo[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ descricao: '', categoria: '', valor: '', tipo: 'saida' as CusTipo, data: '' })
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('projeto_custos').select('*')
+      .eq('projeto_id', projetoId).order('created_at', { ascending: false })
+    if (data) setCustos(data as Custo[])
+    setLoading(false)
+  }, [supabase, projetoId])
+
+  useEffect(() => { load() }, [load])
+
+  const totalEntrada = custos.filter(c => c.tipo === 'entrada').reduce((s, c) => s + Number(c.valor), 0)
+  const totalSaida   = custos.filter(c => c.tipo === 'saida').reduce((s, c) => s + Number(c.valor), 0)
+  const saldo        = totalEntrada - totalSaida
+
+  async function handleAdd() {
+    if (!form.descricao.trim() || !form.valor) return
+    const { data } = await supabase.from('projeto_custos').insert({
+      projeto_id: projetoId, descricao: form.descricao.trim(),
+      categoria: form.categoria.trim(), valor: parseFloat(form.valor),
+      tipo: form.tipo, data: form.data || null,
+    }).select().single()
+    if (data) {
+      setCustos(prev => [data as Custo, ...prev])
+      setForm({ descricao: '', categoria: '', valor: '', tipo: 'saida', data: '' })
+      setShowForm(false)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    await supabase.from('projeto_custos').delete().eq('id', id)
+    setCustos(prev => prev.filter(c => c.id !== id))
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Resumo */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-card border border-border rounded-xl p-4">
+          <p className="text-[11px] text-muted-foreground mb-1">Entradas</p>
+          <p className="text-lg font-bold text-emerald-400">{fmtCurrency(totalEntrada)}</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <p className="text-[11px] text-muted-foreground mb-1">Saídas</p>
+          <p className="text-lg font-bold text-red-400">{fmtCurrency(totalSaida)}</p>
+        </div>
+        <div className={`bg-card border rounded-xl p-4 ${saldo >= 0 ? 'border-emerald-500/30' : 'border-red-500/30'}`}>
+          <p className="text-[11px] text-muted-foreground mb-1">Saldo</p>
+          <p className={`text-lg font-bold ${saldo >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmtCurrency(saldo)}</p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-foreground">Lançamentos</h3>
+        <button onClick={() => setShowForm(v => !v)}
+          className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium">
+          <Plus size={13} /> Adicionar
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="bg-muted/40 border border-border rounded-xl p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Tipo</label>
+              <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value as CusTipo }))}
+                className={inp}>
+                <option value="saida">↓ Saída / Custo</option>
+                <option value="entrada">↑ Entrada / Receita</option>
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>Valor (R$)</label>
+              <input type="number" value={form.valor} onChange={e => setForm(f => ({ ...f, valor: e.target.value }))}
+                placeholder="0,00" step="0.01" min="0" className={inp} />
+            </div>
+          </div>
+          <div>
+            <label className={lbl}>Descrição *</label>
+            <input value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))}
+              placeholder="Ex: Design das peças, Anúncios..." className={inp} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Categoria</label>
+              <input value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}
+                placeholder="Ex: Design, Marketing..." className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Data</label>
+              <input type="date" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} className={inp} />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={() => setShowForm(false)} className="text-xs text-muted-foreground hover:text-foreground">Cancelar</button>
+            <button onClick={handleAdd} disabled={!form.descricao.trim() || !form.valor}
+              className="h-8 px-4 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              Salvar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-muted-foreground" /></div>
+      ) : custos.length === 0 && !showForm ? (
+        <div className="flex flex-col items-center justify-center py-10 text-center bg-card border border-border rounded-2xl">
+          <BarChart3 size={28} className="text-muted-foreground/20 mb-2" />
+          <p className="text-sm text-muted-foreground">Nenhum lançamento cadastrado</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Registre entradas e saídas do projeto</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {custos.map(c => (
+            <div key={c.id} className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3 group">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${c.tipo === 'entrada' ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
+                {c.tipo === 'entrada'
+                  ? <TrendingUp size={14} className="text-emerald-400" />
+                  : <TrendingDown size={14} className="text-red-400" />
+                }
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-foreground">{c.descricao}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  {c.categoria && <span className="text-[10px] text-muted-foreground bg-muted rounded px-1.5 py-px">{c.categoria}</span>}
+                  {c.data && <span className="text-[10px] text-muted-foreground">{fmtDate(c.data)}</span>}
+                </div>
+              </div>
+              <span className={`text-sm font-semibold tabular-nums shrink-0 ${c.tipo === 'entrada' ? 'text-emerald-400' : 'text-red-400'}`}>
+                {c.tipo === 'entrada' ? '+' : '-'}{fmtCurrency(Number(c.valor))}
+              </span>
+              <button onClick={() => handleDelete(c.id)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── MetasTab ─────────────────────────────────────────────────────────────────
+
+function MetasTab({ projetoId }: { projetoId: string }) {
+  const supabase = createClient()
+  const [metas, setMetas]       = useState<Meta[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ titulo: '', descricao: '', valor_meta: '', valor_atual: '0', unidade: '', status: 'em_andamento' as MetaStatus })
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('projeto_metas').select('*')
+      .eq('projeto_id', projetoId).order('created_at')
+    if (data) setMetas(data as Meta[])
+    setLoading(false)
+  }, [supabase, projetoId])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleAdd() {
+    if (!form.titulo.trim()) return
+    const { data } = await supabase.from('projeto_metas').insert({
+      projeto_id: projetoId, titulo: form.titulo.trim(), descricao: form.descricao.trim(),
+      valor_meta: form.valor_meta ? parseFloat(form.valor_meta) : null,
+      valor_atual: parseFloat(form.valor_atual) || 0,
+      unidade: form.unidade.trim(), status: form.status,
+    }).select().single()
+    if (data) {
+      setMetas(prev => [...prev, data as Meta])
+      setForm({ titulo: '', descricao: '', valor_meta: '', valor_atual: '0', unidade: '', status: 'em_andamento' })
+      setShowForm(false)
+    }
+  }
+
+  async function updateStatus(id: string, status: MetaStatus) {
+    await supabase.from('projeto_metas').update({ status }).eq('id', id)
+    setMetas(prev => prev.map(m => m.id === id ? { ...m, status } : m))
+  }
+
+  async function updateValorAtual(id: string, val: string) {
+    const valor_atual = parseFloat(val) || 0
+    await supabase.from('projeto_metas').update({ valor_atual }).eq('id', id)
+    setMetas(prev => prev.map(m => m.id === id ? { ...m, valor_atual } : m))
+  }
+
+  async function handleDelete(id: string) {
+    await supabase.from('projeto_metas').delete().eq('id', id)
+    setMetas(prev => prev.filter(m => m.id !== id))
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-foreground">Metas do projeto</h3>
+        <button onClick={() => setShowForm(v => !v)}
+          className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium">
+          <Plus size={13} /> Nova meta
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="bg-muted/40 border border-border rounded-xl p-4 space-y-3">
+          <div>
+            <label className={lbl}>Título *</label>
+            <input value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))}
+              placeholder="Ex: Alcançar 10k seguidores, Taxa de conversão 5%..." className={inp} />
+          </div>
+          <div>
+            <label className={lbl}>Descrição</label>
+            <textarea value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))}
+              rows={2} placeholder="Contexto, critérios de sucesso..."
+              className="w-full rounded-lg bg-muted border border-border px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className={lbl}>Meta</label>
+              <input type="number" value={form.valor_meta} onChange={e => setForm(f => ({ ...f, valor_meta: e.target.value }))}
+                placeholder="100" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Atual</label>
+              <input type="number" value={form.valor_atual} onChange={e => setForm(f => ({ ...f, valor_atual: e.target.value }))}
+                placeholder="0" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Unidade</label>
+              <input value={form.unidade} onChange={e => setForm(f => ({ ...f, unidade: e.target.value }))}
+                placeholder="%, R$, leads..." className={inp} />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={() => setShowForm(false)} className="text-xs text-muted-foreground hover:text-foreground">Cancelar</button>
+            <button onClick={handleAdd} disabled={!form.titulo.trim()}
+              className="h-8 px-4 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              Salvar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-muted-foreground" /></div>
+      ) : metas.length === 0 && !showForm ? (
+        <div className="flex flex-col items-center justify-center py-10 text-center bg-card border border-border rounded-2xl">
+          <Target size={28} className="text-muted-foreground/20 mb-2" />
+          <p className="text-sm text-muted-foreground">Nenhuma meta cadastrada</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Defina objetivos mensuráveis para o projeto</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {metas.map(m => {
+            const pct = (m.valor_meta != null && m.valor_meta > 0 && m.valor_atual != null)
+              ? Math.min(100, Math.round((m.valor_atual / m.valor_meta) * 100))
+              : null
+            const sCfg = META_STATUS_CFG[m.status]
+            return (
+              <div key={m.id} className="bg-card border border-border rounded-xl p-4 group">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-foreground">{m.titulo}</p>
+                      <Badge className={`text-[10px] px-1.5 h-4 ${sCfg.cls}`}>{sCfg.label}</Badge>
+                    </div>
+                    {m.descricao && <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{m.descricao}</p>}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-all">
+                    <select value={m.status} onChange={e => updateStatus(m.id, e.target.value as MetaStatus)}
+                      className="h-7 rounded-lg bg-muted border border-border px-2 text-[11px] text-foreground focus:outline-none cursor-pointer">
+                      <option value="em_andamento">Em andamento</option>
+                      <option value="atingida">Atingida</option>
+                      <option value="nao_atingida">Não atingida</option>
+                    </select>
+                    <button onClick={() => handleDelete(m.id)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+
+                {m.valor_meta != null && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <label className="text-muted-foreground">Atual:</label>
+                        <input type="number" defaultValue={m.valor_atual ?? 0}
+                          key={`${m.id}-${m.valor_atual}`}
+                          onBlur={e => updateValorAtual(m.id, e.target.value)}
+                          className="w-20 h-6 rounded bg-muted border border-border px-2 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" />
+                        {m.unidade && <span className="text-muted-foreground">/ {m.valor_meta} {m.unidade}</span>}
+                      </div>
+                      {pct !== null && <span className="font-medium text-foreground">{pct}%</span>}
+                    </div>
+                    {pct !== null && (
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-emerald-400' : 'bg-primary'}`}
+                          style={{ width: `${pct}%` }} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── LinksTab ─────────────────────────────────────────────────────────────────
+
+function LinksTab({ projetoId }: { projetoId: string }) {
+  const supabase = createClient()
+  const [links, setLinks]       = useState<ProjetoLink[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ titulo: '', url: '', categoria: '' })
+  const [copied, setCopied]     = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('projeto_links').select('*')
+      .eq('projeto_id', projetoId).order('created_at', { ascending: false })
+    if (data) setLinks(data as ProjetoLink[])
+    setLoading(false)
+  }, [supabase, projetoId])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleAdd() {
+    if (!form.titulo.trim() || !form.url.trim()) return
+    let url = form.url.trim()
+    if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://' + url
+    const { data } = await supabase.from('projeto_links').insert({
+      projeto_id: projetoId, titulo: form.titulo.trim(),
+      url, categoria: form.categoria.trim(),
+    }).select().single()
+    if (data) {
+      setLinks(prev => [data as ProjetoLink, ...prev])
+      setForm({ titulo: '', url: '', categoria: '' })
+      setShowForm(false)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    await supabase.from('projeto_links').delete().eq('id', id)
+    setLinks(prev => prev.filter(l => l.id !== id))
+  }
+
+  function copyUrl(url: string, id: string) {
+    navigator.clipboard.writeText(url)
+    setCopied(id)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-foreground">Links do projeto</h3>
+        <button onClick={() => setShowForm(v => !v)}
+          className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium">
+          <Plus size={13} /> Adicionar link
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="bg-muted/40 border border-border rounded-xl p-4 space-y-3">
+          <div>
+            <label className={lbl}>Título *</label>
+            <input value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))}
+              placeholder="Ex: Briefing, Drive, Planilha de custos..." className={inp} />
+          </div>
+          <div>
+            <label className={lbl}>URL *</label>
+            <input value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+              placeholder="https://..." className={inp} />
+          </div>
+          <div>
+            <label className={lbl}>Categoria</label>
+            <input value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}
+              placeholder="Ex: Drive, Figma, Planilha..." className={inp} />
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={() => setShowForm(false)} className="text-xs text-muted-foreground hover:text-foreground">Cancelar</button>
+            <button onClick={handleAdd} disabled={!form.titulo.trim() || !form.url.trim()}
+              className="h-8 px-4 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              Salvar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-muted-foreground" /></div>
+      ) : links.length === 0 && !showForm ? (
+        <div className="flex flex-col items-center justify-center py-10 text-center bg-card border border-border rounded-2xl">
+          <Link2 size={28} className="text-muted-foreground/20 mb-2" />
+          <p className="text-sm text-muted-foreground">Nenhum link cadastrado</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Adicione drives, figmas, planilhas e outros recursos</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {links.map(l => (
+            <div key={l.id} className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3 group">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <Link2 size={14} className="text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-foreground">{l.titulo}</p>
+                <p className="text-[11px] text-muted-foreground truncate mt-0.5">{l.url}</p>
+                {l.categoria && (
+                  <span className="text-[10px] text-muted-foreground bg-muted rounded px-1.5 py-px mt-0.5 inline-block">{l.categoria}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                <button onClick={() => copyUrl(l.url, l.id)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted" title="Copiar URL">
+                  {copied === l.id ? <CheckCircle2 size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                </button>
+                <a href={l.url} target="_blank" rel="noopener noreferrer"
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted" title="Abrir">
+                  <ExternalLink size={12} />
+                </a>
+                <button onClick={() => handleDelete(l.id)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10">
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── RelatoriosTab ────────────────────────────────────────────────────────────
+
+function RelatoriosTab({ projetoId }: { projetoId: string }) {
+  const supabase = createClient()
+  const [relatorios, setRelatorios] = useState<Relatorio[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [showForm, setShowForm]     = useState(false)
+  const [expanded, setExpanded]     = useState<string | null>(null)
+  const [form, setForm] = useState({ titulo: '', conteudo: '', data_referencia: '' })
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('projeto_relatorios').select('*')
+      .eq('projeto_id', projetoId).order('created_at', { ascending: false })
+    if (data) setRelatorios(data as Relatorio[])
+    setLoading(false)
+  }, [supabase, projetoId])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleAdd() {
+    if (!form.titulo.trim()) return
+    const { data } = await supabase.from('projeto_relatorios').insert({
+      projeto_id: projetoId, titulo: form.titulo.trim(),
+      conteudo: form.conteudo.trim(), data_referencia: form.data_referencia || null,
+    }).select().single()
+    if (data) {
+      setRelatorios(prev => [data as Relatorio, ...prev])
+      setForm({ titulo: '', conteudo: '', data_referencia: '' })
+      setShowForm(false)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Excluir este relatório?')) return
+    await supabase.from('projeto_relatorios').delete().eq('id', id)
+    setRelatorios(prev => prev.filter(r => r.id !== id))
+    if (expanded === id) setExpanded(null)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-foreground">Relatórios</h3>
+        <button onClick={() => setShowForm(v => !v)}
+          className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium">
+          <Plus size={13} /> Novo relatório
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="bg-muted/40 border border-border rounded-xl p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Título *</label>
+              <input value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))}
+                placeholder="Ex: Relatório Semanal..." className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Data de referência</label>
+              <input type="date" value={form.data_referencia} onChange={e => setForm(f => ({ ...f, data_referencia: e.target.value }))} className={inp} />
+            </div>
+          </div>
+          <div>
+            <label className={lbl}>Conteúdo</label>
+            <textarea value={form.conteudo} onChange={e => setForm(f => ({ ...f, conteudo: e.target.value }))}
+              rows={5} placeholder="Resultados, observações, próximos passos..."
+              className="w-full rounded-lg bg-muted border border-border px-3 py-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none leading-relaxed" />
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={() => setShowForm(false)} className="text-xs text-muted-foreground hover:text-foreground">Cancelar</button>
+            <button onClick={handleAdd} disabled={!form.titulo.trim()}
+              className="h-8 px-4 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              Salvar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-muted-foreground" /></div>
+      ) : relatorios.length === 0 && !showForm ? (
+        <div className="flex flex-col items-center justify-center py-10 text-center bg-card border border-border rounded-2xl">
+          <FileText size={28} className="text-muted-foreground/20 mb-2" />
+          <p className="text-sm text-muted-foreground">Nenhum relatório cadastrado</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Documente resultados e acompanhamento do projeto</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {relatorios.map(r => (
+            <div key={r.id} className="bg-card border border-border rounded-xl overflow-hidden group">
+              <button
+                onClick={() => setExpanded(expanded === r.id ? null : r.id)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+              >
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <FileText size={14} className="text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-foreground">{r.titulo}</p>
+                  {r.data_referencia && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{fmtDate(r.data_referencia)}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={e => { e.stopPropagation(); handleDelete(r.id) }}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all">
+                    <Trash2 size={12} />
+                  </button>
+                  <ChevronDown size={14} className={`text-muted-foreground transition-transform duration-200 ${expanded === r.id ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+              {expanded === r.id && (
+                <div className="px-4 py-4 border-t border-border bg-muted/20">
+                  {r.conteudo
+                    ? <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{r.conteudo}</p>
+                    : <p className="text-xs text-muted-foreground italic">Sem conteúdo registrado.</p>
+                  }
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -517,14 +1193,15 @@ function ProjetoDetail({ projeto, onBack, onEdit }: {
   onBack: () => void
   onEdit: () => void
 }) {
-  const stCfg  = STATUS_CFG[projeto.status]
-  const pCfg   = PRIORITY_CFG[projeto.prioridade]
-  const pct    = progressPct(projeto.data_inicio, projeto.data_fim)
+  const [tab, setTab] = useState<ProjetoTab>('sobre')
+  const stCfg     = STATUS_CFG[projeto.status]
+  const pCfg      = PRIORITY_CFG[projeto.prioridade]
+  const pct       = progressPct(projeto.data_inicio, projeto.data_fim)
   const isOverdue = projeto.data_fim && new Date(projeto.data_fim) < new Date() && projeto.status !== 'concluido'
 
   return (
     <div className="space-y-5">
-      {/* Back */}
+      {/* Back + edit */}
       <div className="flex items-center justify-between">
         <button onClick={onBack}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -539,8 +1216,8 @@ function ProjetoDetail({ projeto, onBack, onEdit }: {
       {/* Project header */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
         <div className="h-1.5 w-full" style={{ background: projeto.cor }} />
-        <div className="p-6">
-          <div className="flex items-start gap-4">
+        <div className="p-5">
+          <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: projeto.cor + '20' }}>
               <FolderKanban size={22} style={{ color: projeto.cor }} />
             </div>
@@ -552,40 +1229,65 @@ function ProjetoDetail({ projeto, onBack, onEdit }: {
                 <span className={`flex items-center gap-1 text-[10px] ${pCfg.color}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${pCfg.dot}`} /> {pCfg.label}
                 </span>
-              </div>
-              <h1 className="text-xl font-bold text-foreground">{projeto.nome}</h1>
-              {projeto.cliente && <p className="text-sm text-muted-foreground mt-0.5">{projeto.cliente}</p>}
-              {projeto.descricao && <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{projeto.descricao}</p>}
-
-              <div className="flex items-center gap-4 mt-3 flex-wrap">
-                {(projeto.data_inicio || projeto.data_fim) && (
-                  <span className={`flex items-center gap-1.5 text-xs ${isOverdue ? 'text-red-400' : 'text-muted-foreground'}`}>
-                    <Calendar size={12} />
-                    {fmtDate(projeto.data_inicio) ?? '—'} → {fmtDate(projeto.data_fim) ?? '—'}
-                    {isOverdue && ' · atrasado'}
-                  </span>
+                {projeto.cliente && (
+                  <span className="text-[10px] text-muted-foreground">· {projeto.cliente}</span>
                 )}
               </div>
-
-              {pct !== null && (
-                <div className="mt-4 space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-[10px] text-muted-foreground">Progresso temporal</span>
-                    <span className="text-[10px] font-medium text-foreground">{pct}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: projeto.cor }} />
-                  </div>
-                </div>
+              <h1 className="text-xl font-bold text-foreground">{projeto.nome}</h1>
+              {(projeto.data_inicio || projeto.data_fim) && (
+                <span className={`flex items-center gap-1 text-xs mt-1 ${isOverdue ? 'text-red-400' : 'text-muted-foreground'}`}>
+                  <Calendar size={11} />
+                  {fmtDate(projeto.data_inicio) ?? '—'} → {fmtDate(projeto.data_fim) ?? '—'}
+                  {isOverdue && ' · atrasado'}
+                </span>
               )}
             </div>
+            {pct !== null && (
+              <div className="shrink-0 text-right">
+                <span className="text-2xl font-bold text-foreground">{pct}%</span>
+                <p className="text-[10px] text-muted-foreground">progresso</p>
+              </div>
+            )}
           </div>
+          {pct !== null && (
+            <div className="h-1 rounded-full bg-muted overflow-hidden mt-3">
+              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: projeto.cor }} />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Kanban */}
-      <div className="bg-card border border-border rounded-2xl p-6">
-        <KanbanBoard projetoId={projeto.id} />
+      {/* Tab navigation */}
+      <div className="border-b border-border">
+        <div className="flex overflow-x-auto">
+          {PROJETO_TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                tab === t.id
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab content */}
+      <div className="min-h-[300px]">
+        {tab === 'sobre'        && <SobreTab projeto={projeto} />}
+        {tab === 'planejamento' && (
+          <div className="bg-card border border-border rounded-2xl p-6">
+            <KanbanBoard projetoId={projeto.id} />
+          </div>
+        )}
+        {tab === 'custos'      && <CustosTab projetoId={projeto.id} />}
+        {tab === 'metas'       && <MetasTab projetoId={projeto.id} />}
+        {tab === 'links'       && <LinksTab projetoId={projeto.id} />}
+        {tab === 'relatorios'  && <RelatoriosTab projetoId={projeto.id} />}
       </div>
     </div>
   )
@@ -673,14 +1375,14 @@ function ProjetoCard({ projeto, onClick, onEdit, onDelete }: {
 // ─── Main Module ──────────────────────────────────────────────────────────────
 
 export function ProjetosModule() {
-  const [projetos, setProjetos]     = useState<Projeto[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [filterStatus, setFilter]   = useState<ProjStatus | 'all'>('all')
-  const [showForm, setShowForm]     = useState(false)
-  const [editing, setEditing]       = useState<Projeto | null>(null)
-  const [saving, setSaving]         = useState(false)
+  const [projetos, setProjetos]       = useState<Projeto[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [filterStatus, setFilter]     = useState<ProjStatus | 'all'>('all')
+  const [showForm, setShowForm]       = useState(false)
+  const [editing, setEditing]         = useState<Projeto | null>(null)
+  const [saving, setSaving]           = useState(false)
   const [clientNames, setClientNames] = useState<string[]>([])
-  const [selected, setSelected]     = useState<Projeto | null>(null)
+  const [selected, setSelected]       = useState<Projeto | null>(null)
   const { empresaId } = useEmpresa()
 
   async function load() {
@@ -750,9 +1452,8 @@ export function ProjetosModule() {
   function openEdit(projeto: Projeto) { setEditing(projeto); setShowForm(true) }
   function openCreate() { setEditing(null); setShowForm(true) }
 
-  const sel = 'h-8 rounded-lg bg-muted border border-border px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer transition-all'
+  const fsel = 'h-8 rounded-lg bg-muted border border-border px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer transition-all'
 
-  // ── Detail view ──
   if (selected) {
     return (
       <div className="max-w-[1200px]">
@@ -774,10 +1475,8 @@ export function ProjetosModule() {
     )
   }
 
-  // ── List view ──
   return (
     <div className="space-y-5 max-w-[1200px]">
-      {/* Stats */}
       <div className="grid grid-cols-4 gap-3">
         {[
           { label: 'Total',      value: counts.total,     color: 'text-foreground',  bg: 'bg-muted/60' },
@@ -799,9 +1498,8 @@ export function ProjetosModule() {
         ))}
       </div>
 
-      {/* Toolbar */}
       <div className="flex items-center justify-between gap-3">
-        <select value={filterStatus} onChange={e => setFilter(e.target.value as ProjStatus | 'all')} className={sel}>
+        <select value={filterStatus} onChange={e => setFilter(e.target.value as ProjStatus | 'all')} className={fsel}>
           <option value="all">Todos os status</option>
           {(Object.keys(STATUS_CFG) as ProjStatus[]).map(s => (
             <option key={s} value={s}>{STATUS_CFG[s].label}</option>
@@ -812,7 +1510,6 @@ export function ProjetosModule() {
         </Button>
       </div>
 
-      {/* Grid */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 size={20} className="animate-spin text-muted-foreground" />
@@ -833,9 +1530,7 @@ export function ProjetosModule() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(p => (
-            <ProjetoCard
-              key={p.id}
-              projeto={p}
+            <ProjetoCard key={p.id} projeto={p}
               onClick={() => setSelected(p)}
               onEdit={openEdit}
               onDelete={handleDelete}
@@ -848,17 +1543,6 @@ export function ProjetosModule() {
             </div>
             <span className="text-xs font-medium">Novo projeto</span>
           </button>
-        </div>
-      )}
-
-      {projetos.length > 0 && (
-        <div className="flex items-center gap-4 pt-2">
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <Calendar size={11} /> Projetos com datas aparecem no Calendário
-          </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <FolderKanban size={11} /> Leads do Pipeline podem ser vinculados a projetos
-          </div>
         </div>
       )}
 
