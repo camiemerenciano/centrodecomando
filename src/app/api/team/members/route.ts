@@ -77,14 +77,25 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { nome, email, senha, parent_id, empresa_id } = await req.json()
+  const body = await req.json()
+  const nome     = (body.nome  ?? '').trim()
+  const email    = (body.email ?? '').trim().toLowerCase()
+  const senha    = (body.senha ?? '').trim()
+  const parent_id  = body.parent_id  ?? null
+  const empresa_id = body.empresa_id ?? null
+
   if (!email) return NextResponse.json({ error: 'E-mail é obrigatório' }, { status: 400 })
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailRegex.test(email)) {
+    return NextResponse.json({ error: 'Formato de e-mail inválido.' }, { status: 400 })
+  }
 
   const admin = createAdminClient()
 
   // Verifica se já existe uma conta com esse e-mail
   const { data: usersPage } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
-  const existing = usersPage?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase())
+  const existing = usersPage?.users?.find(u => u.email?.toLowerCase() === email)
 
   let memberId: string
 

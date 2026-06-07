@@ -545,12 +545,13 @@ function AddManualModal({ onClose, onAdded, members, orgPeople }: {
   function field(k: keyof typeof form, v: string) { setForm(f => ({ ...f, [k]: v })) }
 
   async function save() {
-    if (!form.email) { setError('E-mail é obrigatório.'); return }
+    const email = form.email.trim().toLowerCase()
+    if (!email) { setError('E-mail é obrigatório.'); return }
     setSaving(true); setError('')
     try {
       const res  = await fetch('/api/team/members', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, parent_id: parentId || null, empresa_id: empresaId || null }),
+        body: JSON.stringify({ ...form, email, parent_id: parentId || null, empresa_id: empresaId || null }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erro ao adicionar membro')
