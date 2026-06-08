@@ -331,9 +331,6 @@ function ClientPanel({
             <Badge className={`text-[10px] ${statusConfig[form.status].cls}`}>
               {statusConfig[form.status].label}
             </Badge>
-            <Badge className={`text-[10px] ${planColor[form.plan] ?? 'bg-muted text-muted-foreground'}`}>
-              {form.plan}
-            </Badge>
             <span className="text-xs text-muted-foreground">desde {form.since}</span>
           </div>
 
@@ -359,8 +356,6 @@ function ClientPanel({
 
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Contrato</p>
-                <InfoRow icon={FileText}  label="Plano"        value={form.plan}  />
-                <InfoRow icon={DollarSign}label="MRR"          value={form.mrr}   />
                 <InfoRow icon={Calendar}  label="Cliente desde" value={form.since} />
               </section>
 
@@ -410,9 +405,6 @@ function ClientPanel({
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Comercial</p>
                 <div className="flex items-center gap-2.5">
                   <div className="flex gap-1.5 flex-wrap">
-                    <Badge className={`text-[10px] ${PIPELINE_STAGES.find(s => s.id === form.pipelineStage)?.cls ?? 'bg-muted text-muted-foreground border-border'}`}>
-                      {PIPELINE_STAGES.find(s => s.id === form.pipelineStage)?.label ?? 'Sem etapa'}
-                    </Badge>
                     <Badge className={`text-[10px] ${CONTRATO_CFG[form.contrato].cls}`}>{CONTRATO_CFG[form.contrato].label}</Badge>
                     <Badge className={`text-[10px] ${REUNIAO_CFG[form.reuniao].cls}`}>{REUNIAO_CFG[form.reuniao].label}</Badge>
                   </div>
@@ -513,21 +505,12 @@ function ClientPanel({
 
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Contrato</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={lbl}>Status</label>
-                    <select value={form.status} onChange={f('status')} className={inp + ' cursor-pointer'}>
-                      {STATUSES.map(s => <option key={s} value={s}>{statusConfig[s].label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lbl}>Plano</label>
-                    <select value={form.plan} onChange={f('plan')} className={inp + ' cursor-pointer'}>
-                      {PLANS.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
+                <div>
+                  <label className={lbl}>Status</label>
+                  <select value={form.status} onChange={f('status')} className={inp + ' cursor-pointer'}>
+                    {STATUSES.map(s => <option key={s} value={s}>{statusConfig[s].label}</option>)}
+                  </select>
                 </div>
-                <div><label className={lbl}>MRR</label><input value={form.mrr} onChange={f('mrr')} className={inp} placeholder="R$ 0,00" /></div>
                 <div><label className={lbl}>Cliente desde</label><input value={form.since} onChange={f('since')} className={inp} placeholder="Jan/24" /></div>
               </section>
 
@@ -577,13 +560,6 @@ function ClientPanel({
 
               <section className="space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Comercial</p>
-                <div>
-                  <label className={lbl}>Etapa do Pipeline</label>
-                  <select value={form.pipelineStage} onChange={f('pipelineStage')} className={inp + ' cursor-pointer'}>
-                    <option value="">Sem etapa</option>
-                    {PIPELINE_STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                  </select>
-                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>Contrato</label>
@@ -690,21 +666,12 @@ function NewClientPanel({ areas, onClose, onCreate }: { areas: string[]; onClose
           </section>
           <section className="space-y-3">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Contrato</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={lbl}>Status</label>
-                <select value={form.status} onChange={f('status')} className={inp + ' cursor-pointer'}>
-                  {STATUSES.map(s => <option key={s} value={s}>{statusConfig[s].label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={lbl}>Plano</label>
-                <select value={form.plan} onChange={f('plan')} className={inp + ' cursor-pointer'}>
-                  {PLANS.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
+            <div>
+              <label className={lbl}>Status</label>
+              <select value={form.status} onChange={f('status')} className={inp + ' cursor-pointer'}>
+                {STATUSES.map(s => <option key={s} value={s}>{statusConfig[s].label}</option>)}
+              </select>
             </div>
-            <div><label className={lbl}>MRR</label><input value={form.mrr ?? ''} onChange={f('mrr')} className={inp} placeholder="R$ 0,00" /></div>
             <div><label className={lbl}>Cliente desde</label><input value={form.since ?? ''} onChange={f('since')} className={inp} placeholder="Jan/24" /></div>
           </section>
           <section className="space-y-3">
@@ -746,13 +713,6 @@ function NewClientPanel({ areas, onClose, onCreate }: { areas: string[]; onClose
 
           <section className="space-y-3">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold border-b border-border pb-1.5">Comercial</p>
-            <div>
-              <label className={lbl}>Etapa do Pipeline</label>
-              <select value={form.pipelineStage ?? ''} onChange={f('pipelineStage')} className={inp + ' cursor-pointer'}>
-                <option value="">Sem etapa</option>
-                {PIPELINE_STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-              </select>
-            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Contrato</label>
