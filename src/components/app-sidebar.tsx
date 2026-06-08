@@ -26,6 +26,7 @@ import {
   Plus,
   Building2,
   BookOpen,
+  Wrench,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Logo } from '@/components/logo'
@@ -64,6 +65,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: '/tarefas',    label: 'Tarefas',    icon: CheckSquare },
       { href: '/calendario', label: 'Calendário', icon: Calendar },
       { href: '/processos',  label: 'Processos',  icon: BookOpen },
+      { href: '/servicos',   label: 'Serviços',   icon: Wrench },
     ],
   },
   {
