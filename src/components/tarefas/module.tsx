@@ -902,17 +902,17 @@ export function TarefasModule() {
       ]
       setMembers(allMembers)
 
-      // Load tasks visible to this user: tasks they created OR are assigned to
-      const [{ data: tarefasData }, { data: depsData }] = await Promise.all([
-        (empresaId
-          ? supabase.from('tarefas').select('*').or(`user_id.eq.${user.id},assignee_id.eq.${user.id}`).eq('empresa_id', empresaId)
-          : supabase.from('tarefas').select('*').or(`user_id.eq.${user.id},assignee_id.eq.${user.id}`).is('empresa_id', null)
-        ).order('created_at', { ascending: true }),
-        supabase
-          .from('tarefa_dependencias')
-          .select('tarefa_id, depende_de_id')
-          .or(`tarefa_id.in.(select id from tarefas where user_id='${user.id}' or assignee_id='${user.id}')`),
-      ])
+      // Tarefas de uma empresa são visíveis para todos os membros dela;
+      // sem empresa selecionada, só tarefas próprias ou atribuídas ao usuário
+      const { data: tarefasData } = await (empresaId
+        ? supabase.from('tarefas').select('*').eq('empresa_id', empresaId)
+        : supabase.from('tarefas').select('*').or(`user_id.eq.${user.id},assignee_id.eq.${user.id}`).is('empresa_id', null)
+      ).order('created_at', { ascending: true })
+
+      const tarefaIds = (tarefasData ?? []).map(r => r.id)
+      const { data: depsData } = tarefaIds.length > 0
+        ? await supabase.from('tarefa_dependencias').select('tarefa_id, depende_de_id').in('tarefa_id', tarefaIds)
+        : { data: [] }
 
       const projetosData: Projeto[] = Array.isArray(projRes) ? projRes : []
       setProjetos(projetosData)

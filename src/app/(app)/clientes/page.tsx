@@ -12,6 +12,7 @@ import {
   Hash, CreditCard, CheckSquare, Calendar, Bot, Tag,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useEmpresa } from '@/contexts/empresa-context'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,10 +104,11 @@ function phoneToJid(phone: string): string | null {
   return `${cc}@s.whatsapp.net`
 }
 
-function toRow(c: Client, userId: string) {
+function toRow(c: Client, userId: string, empresaId: string | null) {
   return {
     id: c.id,
     user_id: userId,
+    empresa_id: empresaId,
     name: c.name,
     email: c.email,
     phone: c.phone,
@@ -799,6 +801,7 @@ export default function ClientesPage() {
   const [lunnaMap, setLunnaMap]   = useState<Record<string, boolean>>({})
 
   const supabase = createClient()
+  const { empresaId } = useEmpresa()
 
   useEffect(() => {
     async function load() {
@@ -807,11 +810,10 @@ export default function ClientesPage() {
       setUserId(user.id)
       const saved = user.user_metadata?.areas_de_atuacao
       if (Array.isArray(saved)) setAreas(saved)
-      const { data } = await supabase
-        .from('clientes')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true })
+      const { data } = await (empresaId
+        ? supabase.from('clientes').select('*').eq('user_id', user.id).eq('empresa_id', empresaId).order('created_at', { ascending: true })
+        : supabase.from('clientes').select('*').eq('user_id', user.id).is('empresa_id', null).order('created_at', { ascending: true })
+      )
       if (!data) return
       const mapped = data.map(fromRow)
       setClients(mapped)
@@ -837,7 +839,7 @@ export default function ClientesPage() {
       setLunnaMap(lMap)
     }
     load()
-  }, [])
+  }, [empresaId])
 
   const filtered = useMemo(() => clients.filter(c => {
     if (filter !== 'all' && c.status !== filter) return false
@@ -850,7 +852,7 @@ export default function ClientesPage() {
 
   async function handleSave(updated: Client) {
     if (!userId) return
-    await supabase.from('clientes').update(toRow(updated, userId)).eq('id', updated.id)
+    await supabase.from('clientes').update(toRow(updated, userId, empresaId || null)).eq('id', updated.id)
     setClients(prev => prev.map(c => c.id === updated.id ? updated : c))
     setSelected(updated)
   }
@@ -868,6 +870,7 @@ export default function ClientesPage() {
       : ''
     const row = {
       user_id: userId,
+      empresa_id: empresaId || null,
       name: data.name,
       email: data.email,
       phone: data.phone,

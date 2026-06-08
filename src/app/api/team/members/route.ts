@@ -86,11 +86,6 @@ export async function POST(req: Request) {
 
   if (!email) return NextResponse.json({ error: 'E-mail é obrigatório' }, { status: 400 })
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!emailRegex.test(email)) {
-    return NextResponse.json({ error: 'Formato de e-mail inválido.' }, { status: 400 })
-  }
-
   const admin = createAdminClient()
 
   // Verifica se já existe uma conta com esse e-mail
