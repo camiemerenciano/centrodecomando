@@ -975,7 +975,7 @@ export default function ClientesPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  {['Cliente', 'Telefone', 'Área', 'Tags', 'Pipeline', 'Atribuído', 'IA', 'Contrato', 'Reunião', 'Atualização', ''].map(h => (
+                  {['Cliente', 'Telefone', 'Tipo de serviço', 'Tags', 'Última atualização', ''].map(h => (
                     <th key={h} className="text-left px-3 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
                       {h}
                     </th>
@@ -984,9 +984,6 @@ export default function ClientesPage() {
               </thead>
               <tbody>
                 {filtered.map(client => {
-                  const pipe = pipelineCls(client.pipelineStage)
-                  const iaActive = lunnaMap[client.id]
-                  const iaKnown  = client.phone && iaActive !== undefined
                   return (
                     <tr
                       key={client.id}
@@ -1011,9 +1008,9 @@ export default function ClientesPage() {
                       <td className="px-3 py-3">
                         <span className="text-xs text-muted-foreground whitespace-nowrap">{client.phone || '—'}</span>
                       </td>
-                      {/* Área (servicos) */}
+                      {/* Tipo de serviço */}
                       <td className="px-3 py-3">
-                        <div className="flex flex-wrap gap-1 max-w-[140px]">
+                        <div className="flex flex-wrap gap-1">
                           {client.servicos.slice(0, 2).map(s => (
                             <span key={s} className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border bg-primary/10 text-primary border-primary/20 whitespace-nowrap">{s}</span>
                           ))}
@@ -1025,54 +1022,15 @@ export default function ClientesPage() {
                       </td>
                       {/* Tags */}
                       <td className="px-3 py-3">
-                        <div className="flex flex-wrap gap-1 max-w-[120px]">
-                          {client.tags.slice(0, 2).map(t => (
+                        <div className="flex flex-wrap gap-1">
+                          {client.tags.slice(0, 3).map(t => (
                             <span key={t} className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border bg-muted text-muted-foreground border-border whitespace-nowrap">{t}</span>
                           ))}
-                          {client.tags.length > 2 && (
-                            <span className="text-[9px] text-muted-foreground">+{client.tags.length - 2}</span>
+                          {client.tags.length > 3 && (
+                            <span className="text-[9px] text-muted-foreground">+{client.tags.length - 3}</span>
                           )}
                           {client.tags.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
                         </div>
-                      </td>
-                      {/* Pipeline */}
-                      <td className="px-3 py-3">
-                        {pipe
-                          ? <Badge className={`text-[9px] whitespace-nowrap ${pipe.cls}`}>{pipe.label}</Badge>
-                          : <span className="text-xs text-muted-foreground">—</span>}
-                      </td>
-                      {/* Atribuído */}
-                      <td className="px-3 py-3">
-                        {client.assignee ? (
-                          <div className="flex items-center gap-1.5">
-                            <Avatar className="w-5 h-5">
-                              <AvatarFallback className="text-[9px] bg-primary/20 text-primary font-semibold">
-                                {client.assigneeInitials || client.assignee[0]?.toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-xs text-muted-foreground whitespace-nowrap">{client.assignee}</span>
-                          </div>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
-                      </td>
-                      {/* IA */}
-                      <td className="px-3 py-3">
-                        {iaKnown ? (
-                          <Badge className={`text-[9px] gap-1 ${iaActive ? 'bg-primary/15 text-primary border-primary/20' : 'bg-muted text-muted-foreground border-border'}`}>
-                            <Bot size={8} />{iaActive ? 'Ativa' : 'Pausada'}
-                          </Badge>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
-                      </td>
-                      {/* Contrato */}
-                      <td className="px-3 py-3">
-                        <Badge className={`text-[9px] whitespace-nowrap ${CONTRATO_CFG[client.contrato].cls}`}>
-                          {CONTRATO_CFG[client.contrato].label}
-                        </Badge>
-                      </td>
-                      {/* Reunião */}
-                      <td className="px-3 py-3">
-                        <Badge className={`text-[9px] whitespace-nowrap ${REUNIAO_CFG[client.reuniao].cls}`}>
-                          {REUNIAO_CFG[client.reuniao].label}
-                        </Badge>
                       </td>
                       {/* Última atualização */}
                       <td className="px-3 py-3">
