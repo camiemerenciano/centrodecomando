@@ -762,7 +762,7 @@ export default function EquipePage() {
 
   async function fetchAll() {
     const [membersRes, orgRes] = await Promise.all([
-      fetch('/api/team/members'),
+      fetch(empresaId ? `/api/team/members?empresa_id=${empresaId}` : '/api/team/members?empresa_id='),
       (empresaId
         ? supabase.from('organograma_pessoas').select(ORG_SELECT).eq('empresa_id', empresaId)
         : supabase.from('organograma_pessoas').select(ORG_SELECT).is('empresa_id', null)

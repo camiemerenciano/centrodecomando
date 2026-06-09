@@ -2,17 +2,25 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export async function GET() {
+export async function GET(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { searchParams } = new URL(req.url)
+  const empresaId = searchParams.get('empresa_id')
+
   const admin = createAdminClient()
 
-  const { data: links } = await admin
+  const linksQuery = admin
     .from('team_members')
     .select('member_id')
     .eq('owner_id', user.id)
+
+  const { data: links } = await (empresaId
+    ? linksQuery.eq('empresa_id', empresaId)
+    : linksQuery.is('empresa_id', null)
+  )
 
   if (!links || links.length === 0) return NextResponse.json([])
 
